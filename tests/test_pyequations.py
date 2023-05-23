@@ -2,8 +2,12 @@ from sympy import symbols, Eq
 from sympy.physics.units import cm
 from pyequations import __version__
 
-from pyequations.pyequations import _get_symbols, calc, PyEquations
+from pyequations.pyequations import _get_symbols, eq, func, PyEquations, solved
 
+# Make a tolerance function mark as exempt from testing
+
+def within_tolerance(expected, actual, percent=1):
+    return abs(expected - actual) <= abs(expected * percent / 100)
 
 def test_version():
     assert __version__ == '0.1.0'
@@ -37,7 +41,7 @@ def test_inherit_basic():
             self.add_variable('x')
             self.add_variable('y')
 
-        @calc
+        @eq
         def calc_z(self):
             return self.x, self.y
 
@@ -59,15 +63,15 @@ def test_multiple_variables():
             self.add_variable('y')
             self.add_variable('z')
 
-        @calc
+        @eq
         def calc_x(self):
             return self.x, self.y + self.z
 
-        @calc
+        @eq
         def calc_y(self):
             return 5 * self.x + self.z, -self.y
 
-        @calc
+        @eq
         def calc_z(self):
             return self.x + self.y, self.z / 4 + 10
 
@@ -91,15 +95,15 @@ def test_no_solutions():
             self.add_variable('y')
             self.add_variable('z')
 
-        @calc
+        @eq
         def calc_x(self):
             return self.x, self.y + self.z
 
-        @calc
+        @eq
         def calc_y(self):
             return 5 * self.x + self.z, -self.y
 
-        @calc
+        @eq
         def calc_z(self):
             return self.x + self.y, self.z / 4 + 10
 
@@ -123,11 +127,11 @@ def test_mix_units():
             self.add_variable('x')
             self.add_variable('y')
 
-        @calc
+        @eq
         def calc_x(self):
             return self.x, 5
 
-        @calc
+        @eq
         def calc_y(self):
             return self.y, 10 * cm * self.x
 
@@ -147,7 +151,7 @@ def test_not_enough_information():
             self.add_variable('x')
             self.add_variable('y')
 
-        @calc
+        @eq
         def calc_y(self):
             return self.y, self.x * 2
 
@@ -169,17 +173,19 @@ def test_solved_maximum():
             self.add_variable('y')
             self.add_variable('z')
 
-        @calc
+        @eq
         def calc_x(self):
             return self.x, 5
 
-        @calc
+        @eq
         def calc_y(self):
             return self.y, 1 + self.z
 
     inherit = InheritedClass()
 
     inherit.solve()
+
+    print(inherit.get_all_variables())
 
     # Check that as much as possible is solved
     assert inherit.x == 5
@@ -195,22 +201,24 @@ def test_multiple_solutions():
             self.add_variable('x')
             self.add_variable('y')
 
-        @calc
+        @eq
         def calc_x(self):
             return self.x**2, 4
 
-        @calc
+        @eq
         def calc_y(self):
             return self.y**2, 16
 
     inherit = InheritedClass()
 
     # Should raise an exception as there are multiple solutions
+    # Expect this exception:  Exception: Equations have multiple solutions: [(-2,), (2,)]
     try:
         inherit.solve()
-        assert False
-    except Exception:
+    except RuntimeError:
         assert True
+    else:
+        assert False
 
 
 def test_infinite_solutions():
@@ -221,20 +229,117 @@ def test_infinite_solutions():
             self.add_variable('x')
             self.add_variable('y')
 
-        @calc
+        @eq
         def calc_x(self):
             return self.x, self.y
 
-        @calc
+        @eq
         def calc_y(self):
             return self.y, self.x
 
     inherit = InheritedClass()
 
-    # Should raise an exception as there are infinite solutions
-    try:
-        inherit.solve()
-        assert False
-    except Exception:
-        assert True
+    # Should not raise an exception as there are no contradictions, simply not enough information
+    inherit.solve()
 
+    assert inherit.x == symbols('x')
+    assert inherit.y == symbols('y')
+
+
+def test_func():
+    class InheritedClass(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_variable('x')
+            self.add_variable('y')
+
+        @func
+        def calc_x(self):
+            # Do some random logic here
+            if self.x > 5:
+                self.y = 10
+            else:
+                self.y = 3
+
+    inherit = InheritedClass()
+
+    inherit.x = 10
+
+    inherit.solve()
+
+    assert inherit.x == 10
+    assert inherit.y == 10
+
+    inherit.x = 1
+
+    inherit.solve()
+
+    assert inherit.x == 1
+    assert inherit.y == 3
+
+
+def test_silicon():
+    n_i_300K = 1.07e10 * cm ** -3
+
+    class Silicon(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_variable('Si_type', 'Silicon type')
+            self.add_variable('N_a', 'Acceptor concentration')
+            self.add_variable('N_d', 'Donor concentration')
+            self.add_variable('n_oN', 'Thermal equilibrium electron concentration in n-type silicon')
+            self.add_variable('p_oP', 'Thermal equilibrium hole concentration in p-type silicon')
+            self.add_variable('n_oP', 'Thermal equilibrium electron concentration in p-type silicon')
+            self.add_variable('p_oN', 'Thermal equilibrium hole concentration in n-type silicon')
+
+        @func
+        def calc_si_type(self):
+            print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')
+            print(self.get_all_variables())
+            if solved(self.N_a, self.N_d):
+                print('here')
+                if self.N_a > self.N_d:
+                    self.Si_type = 'p-type'
+                elif self.N_a < self.N_d:
+                    self.Si_type = 'n-type'
+                else:
+                    self.Si_type = 'intrinsic'
+            else:
+                print('here2')
+
+        @eq
+        def calc_p_oP1(self):
+            return self.p_oP, self.N_a
+
+        @eq
+        def calc_p_oP2(self):
+            return self.p_oP, n_i_300K ** 2 / self.n_oP
+
+        @eq
+        def calc_n_oN1(self):
+            return self.n_oN, n_i_300K ** 2 / self.p_oN
+
+        @eq
+        def calc_n_oN2(self):
+            return self.n_oN, self.N_d
+
+    s = Silicon()
+
+    s.N_a = 1e16 * cm ** -3
+    s.N_d = 3e15 * cm ** -3
+
+    s.solve()
+
+    print(s.get_all_variables())
+
+    assert s.N_a == 1e16 * cm ** -3
+    assert s.N_d == 3e15 * cm ** -3
+    assert s.Si_type == 'p-type'
+    assert s.n_oN == 3e15 * cm ** -3
+    assert s.n_oP == 11449.0 * cm ** -3
+    assert within_tolerance(s.p_oN, 38163.3333333333 * cm ** -3)
+    assert s.p_oP == 1e16 * cm ** -3
+
+# TODO test get descirption and such

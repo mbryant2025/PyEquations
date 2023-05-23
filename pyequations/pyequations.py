@@ -4,10 +4,10 @@ from sympy import symbols, Symbol, solve, Eq, Number, N
 from sympy.physics.units import cm
 
 
-def calc(func: callable) -> callable:
+def eq(f: callable) -> callable:
     """
     Decorator to mark a function as a calculation function
-    :param func: The function to decorate
+    :param f: The function to decorate
     :return: The decorated function
     """
 
@@ -15,19 +15,34 @@ def calc(func: callable) -> callable:
     # if not isinstance(func(), Symbol):
     #     raise Exception(f'Function {func.__name__} must return a sympy expression')
 
-    setattr(func, '__calc__', True)
-    return func
+    setattr(f, '__equation__', True)
+    return f
 
 
-def _get_symbols(eqs: [Eq]) -> tuple:
+def func(f: callable) -> callable:
+    """
+    Decorator to mark a function as a func
+    :param f: The function to decorate
+    :return: The decorated function
+    """
+
+    # Throw exception if the decorated function does not return a sympy expression TODO
+    # if not isinstance(func(), Symbol):
+    #     raise Exception(f'Function {func.__name__} must return a sympy expression')
+
+    setattr(f, '__user_func__', True)
+    return f
+
+
+def _get_symbols(equations: [Eq]) -> tuple:
     """
     Get all the symbols in an equation
-    :param eqs: The equations
+    :param equations: The equations
     :return: A tuple of all the symbols
     """
 
     # Return a tuple of all the symbols in the equation
-    return tuple({sym for eq in eqs if isinstance(eq, Eq) for sym in eq.free_symbols})
+    return tuple({sym for e in equations if isinstance(e, Eq) for sym in e.free_symbols})
 
 
 def _is_solution(solution) -> bool:
@@ -40,10 +55,15 @@ def _is_solution(solution) -> bool:
     if not bool(solution):
         return False
 
-    # If solution is not a dictionary or if any of the values are lists, there are multiple solutions
-    if not isinstance(solution, dict) or any([isinstance(value, list) for value in solution.values()]):
-        raise Exception(f'Equations have multiple solutions: {solution}')
-        # TODO add consider adding positive, real, or @func
+    # If solution is a list, not a valid solution
+    if isinstance(solution, list):
+        # If the solution has multiple elements, there are multiple solutions and an exception should be thrown
+        if len(solution) > 1:
+            raise RuntimeError(f'Equations have multiple solutions: {solution}. Considering using a @func decorated'
+                               f' function to solve for the remaining variables.')
+        # If the solution has one element, the solution is not fully determined and is not a valid solution
+        else:
+            return False
 
     # Loop through the values in the solution
     for value in solution.values():
@@ -54,19 +74,44 @@ def _is_solution(solution) -> bool:
     return True
 
 
+def _is_solved(var) -> bool:
+    """
+    Check if the variable is solved
+    :param var: the attribute to check
+    :return: Whether the variable is solved
+    """
+
+    return not isinstance(var, Symbol)
+
+
+def solved(*variables) -> bool:
+    """
+    Check if all the variables are solved
+    :param variables: The variables to check
+    :return: Whether all the variables are solved
+    """
+
+    return all([_is_solved(var) for var in variables])
+
+
 class PyEquations:
 
     def __init__(self):
         self.variable_descriptions = {}
-        self.calculation_functions = []
+        # Sympy expressions to solve for
+        self.eqs = []
+        # User defined functions
+        self.funcs = []
 
         # Get all methods defined in the class
         methods = [getattr(self, name) for name in dir(self) if callable(getattr(self, name))]
 
         # Add all methods that are decorated with @calc to the calculation_functions list
         for method in methods:
-            if hasattr(method, '__calc__'):
-                self.calculation_functions.append(method)
+            if hasattr(method, '__equation__'):
+                self.eqs.append(method)
+            elif hasattr(method, '__user_func__'):
+                self.funcs.append(method)
 
     def __setattr__(self, name, value):
         # If the attribute does not exist and the value is a sympy symbol, add it to the class
@@ -88,6 +133,20 @@ class PyEquations:
         else:
             super().__setattr__(name, value)
 
+    def _eval_funcs(self) -> None:
+        """
+        Evaluate all the user defined functions
+        :return: None
+        """
+
+        # Loop through all the user defined functions and evaluate them
+        for f in self.funcs:
+            # Evaluate the function
+            try:
+                f()
+            except Exception as e:
+                continue
+
     def solve(self) -> None:
         """
         Solve the equations by substituting solutions in place of unknown variables
@@ -95,13 +154,16 @@ class PyEquations:
         :return: None
         """
 
+        # Evaluate all the user defined functions
+        self._eval_funcs()
+
         # Gather all the equations from the calculation functions that have an unknown variable
-        equations = [Eq(*function()) for function in self.calculation_functions]
+        equations = [Eq(*function()) for function in self.eqs]
 
         # If any of the equations are False, the system has no solution, throw an exception
-        if false_equations := [eq for eq in equations if eq == False]:
+        if false_equations := [e for e in equations if e == False]:
             # Locate the functions that created the false equations
-            if (false_functions := [function for function in self.calculation_functions if
+            if (false_functions := [function for function in self.eqs if
                                     Eq(*function()) in false_equations]):
                 # Raise an exception with the functions that created the false equations
                 raise Exception(f'Equations have no solutions: {false_functions}')
@@ -113,7 +175,7 @@ class PyEquations:
             for subgroup in combinations(equations, r):
 
                 # If any of the equations are True, we can ignore the subgroup
-                if any([eq == True for eq in subgroup]):
+                if any([e == True for e in subgroup]):
                     continue
 
                 # Attempt to solve the subgroup of equations
@@ -123,7 +185,6 @@ class PyEquations:
                 if _is_solution(solution):
 
                     for key, value in solution.items():
-
                         # Found a solution, set the variable to the solution
                         setattr(self, str(key), value)
 
@@ -132,6 +193,9 @@ class PyEquations:
 
                     # Return to prevent further solving (want to utilize the most information possible)
                     return
+
+        # Re-evaluate all the user defined functions in case of new information
+        self._eval_funcs()
 
     def add_variable(self, name: str, description: str = '') -> None:
         """
@@ -157,7 +221,8 @@ class PyEquations:
         setattr(self, name, symbols(name))
 
         # Add the description to the variable
-        self.variable_descriptions[name] = description
+        if isinstance(description, str):
+            self.variable_descriptions[name] = description
 
     def get_variable_description(self, name: str) -> str:
         """
@@ -187,9 +252,7 @@ class PyEquations:
         # Return the value of the variable
         return getattr(self, name)
 
-    from sympy import Number, Symbol
-
-    def all_variables(self) -> dict[str, Symbol | Number]:
+    def get_all_variables(self) -> dict[str, Symbol | Number]:
         """
         Get all variable
         :return: A dictionary of all variables
@@ -199,7 +262,7 @@ class PyEquations:
 
         return variables
 
-    def get_all_variable_descriptions(self):  # TODO type hint
+    def get_all_variable_descriptions(self) -> dict[str: str]:
         """
         Get all variable descriptions
         :return: A list of all variable descriptions
@@ -217,3 +280,10 @@ class PyEquations:
         # Have the key be "variable_name - description"
         return {f'{name} - {self.variable_descriptions[name]}': getattr(self, name) for name in
                 sorted(self.variable_descriptions.keys())}
+
+
+# TODO gather functions when solve and remove as we use them
+
+# TODO lock
+
+# TODO nice print only stuff we know
