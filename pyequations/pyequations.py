@@ -1,6 +1,6 @@
 from itertools import combinations
 
-from sympy import symbols, Symbol, solve, Eq, Number, N
+from sympy import symbols, Symbol, solve, Eq, Number
 from sympy.physics.units import cm
 
 
@@ -10,10 +10,6 @@ def eq(f: callable) -> callable:
     :param f: The function to decorate
     :return: The decorated function
     """
-
-    # Throw exception if the decorated function does not return a sympy expression TODO
-    # if not isinstance(func(), Symbol):
-    #     raise Exception(f'Function {func.__name__} must return a sympy expression')
 
     setattr(f, '__equation__', True)
     return f
@@ -25,10 +21,6 @@ def func(f: callable) -> callable:
     :param f: The function to decorate
     :return: The decorated function
     """
-
-    # Throw exception if the decorated function does not return a sympy expression TODO
-    # if not isinstance(func(), Symbol):
-    #     raise Exception(f'Function {func.__name__} must return a sympy expression')
 
     setattr(f, '__user_func__', True)
     return f
@@ -144,7 +136,7 @@ class PyEquations:
             # Evaluate the function
             try:
                 f()
-            except Exception as e:
+            except Exception:
                 continue
 
     def solve(self) -> None:
@@ -158,7 +150,13 @@ class PyEquations:
         self._eval_funcs()
 
         # Gather all the equations from the calculation functions that have an unknown variable
-        equations = [Eq(*function()) for function in self.eqs]
+        equations = []
+        for function in self.eqs:
+            result = function()
+            if len(result) == 2:
+                equations.append(Eq(*result))
+            else:
+                raise ValueError("Function does not return two elements")
 
         # If any of the equations are False, the system has no solution, throw an exception
         if false_equations := [e for e in equations if e == False]:
@@ -166,9 +164,7 @@ class PyEquations:
             if (false_functions := [function for function in self.eqs if
                                     Eq(*function()) in false_equations]):
                 # Raise an exception with the functions that created the false equations
-                raise Exception(f'Equations have no solutions: {false_functions}')
-
-        # TODO check for invalid functions made by the user
+                raise RuntimeError(f'Equations have no solutions: {false_functions}')
 
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
@@ -281,9 +277,32 @@ class PyEquations:
         return {f'{name} - {self.variable_descriptions[name]}': getattr(self, name) for name in
                 sorted(self.variable_descriptions.keys())}
 
+    def get_known_variables(self) -> dict[str, Symbol | Number]:
+        """
+        Get all known variables
+        :return: A dictionary of all known variables
+        """
 
-# TODO gather functions when solve and remove as we use them
+        # Return a dictionary of all known variables
+        return {name: getattr(self, name) for name in sorted(self.variable_descriptions.keys()) if
+                getattr(self, name) != symbols(name)}
 
-# TODO lock
+    def get_known_variable_descriptions(self) -> dict[str: str]:
+        """
+        Get all known variable descriptions
+        :return: A list of all known variable descriptions
+        """
 
-# TODO nice print only stuff we know
+        # Return a dictionary of all known variable descriptions
+        return {name: self.variable_descriptions[name] for name in sorted(self.variable_descriptions.keys()) if
+                getattr(self, name) != symbols(name)}
+
+    def get_known_variables_and_descriptions(self) -> dict[str, Symbol | Number]:
+        """
+        Get all known variables and descriptions
+        :return: A list of all known variables and descriptions
+        """
+
+        # Have the key be "variable_name - description"
+        return {f'{name} - {self.variable_descriptions[name]}': getattr(self, name) for name in
+                sorted(self.variable_descriptions.keys()) if getattr(self, name) != symbols(name)}

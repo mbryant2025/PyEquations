@@ -296,18 +296,19 @@ def test_silicon():
 
         @func
         def calc_si_type(self):
-            print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')
-            print(self.get_all_variables())
             if solved(self.N_a, self.N_d):
-                print('here')
                 if self.N_a > self.N_d:
                     self.Si_type = 'p-type'
                 elif self.N_a < self.N_d:
                     self.Si_type = 'n-type'
                 else:
                     self.Si_type = 'intrinsic'
+            elif solved(self.N_a):
+                self.Si_type = 'p-type'
+            elif solved(self.N_d):
+                self.Si_type = 'n-type'
             else:
-                print('here2')
+                self.Si_type = 'intrinsic'
 
         @eq
         def calc_p_oP1(self):
@@ -332,8 +333,6 @@ def test_silicon():
 
     s.solve()
 
-    print(s.get_all_variables())
-
     assert s.N_a == 1e16 * cm ** -3
     assert s.N_d == 3e15 * cm ** -3
     assert s.Si_type == 'p-type'
@@ -342,4 +341,7 @@ def test_silicon():
     assert within_tolerance(s.p_oN, 38163.3333333333 * cm ** -3)
     assert s.p_oP == 1e16 * cm ** -3
 
+
 # TODO test get descirption and such
+
+# TODO test incorrectly made functions
