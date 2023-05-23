@@ -38,8 +38,8 @@ def test_inherit_basic():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
+            self.add_var('x')
+            self.add_var('y')
 
         @eq
         def calc_z(self):
@@ -59,9 +59,9 @@ def test_multiple_variables():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
-            self.add_variable('z')
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
 
         @eq
         def calc_x(self):
@@ -91,9 +91,9 @@ def test_no_solutions():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
-            self.add_variable('z')
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
 
         @eq
         def calc_x(self):
@@ -124,8 +124,8 @@ def test_mix_units():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
+            self.add_var('x')
+            self.add_var('y')
 
         @eq
         def calc_x(self):
@@ -148,8 +148,8 @@ def test_not_enough_information():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
+            self.add_var('x')
+            self.add_var('y')
 
         @eq
         def calc_y(self):
@@ -169,9 +169,9 @@ def test_solved_maximum():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
-            self.add_variable('z')
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
 
         @eq
         def calc_x(self):
@@ -185,7 +185,7 @@ def test_solved_maximum():
 
     inherit.solve()
 
-    print(inherit.get_all_variables())
+    print(inherit.vars())
 
     # Check that as much as possible is solved
     assert inherit.x == 5
@@ -198,8 +198,8 @@ def test_multiple_solutions():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
+            self.add_var('x')
+            self.add_var('y')
 
         @eq
         def calc_x(self):
@@ -226,8 +226,8 @@ def test_infinite_solutions():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
+            self.add_var('x')
+            self.add_var('y')
 
         @eq
         def calc_x(self):
@@ -251,8 +251,8 @@ def test_func():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('x')
-            self.add_variable('y')
+            self.add_var('x')
+            self.add_var('y')
 
         @func
         def calc_x(self):
@@ -286,13 +286,13 @@ def test_silicon():
 
         def __init__(self):
             super().__init__()
-            self.add_variable('Si_type', 'Silicon type')
-            self.add_variable('N_a', 'Acceptor concentration')
-            self.add_variable('N_d', 'Donor concentration')
-            self.add_variable('n_oN', 'Thermal equilibrium electron concentration in n-type silicon')
-            self.add_variable('p_oP', 'Thermal equilibrium hole concentration in p-type silicon')
-            self.add_variable('n_oP', 'Thermal equilibrium electron concentration in p-type silicon')
-            self.add_variable('p_oN', 'Thermal equilibrium hole concentration in n-type silicon')
+            self.add_var('Si_type', 'Silicon type')
+            self.add_var('N_a', 'Acceptor concentration')
+            self.add_var('N_d', 'Donor concentration')
+            self.add_var('n_oN', 'Thermal equilibrium electron concentration in n-type silicon')
+            self.add_var('p_oP', 'Thermal equilibrium hole concentration in p-type silicon')
+            self.add_var('n_oP', 'Thermal equilibrium electron concentration in p-type silicon')
+            self.add_var('p_oN', 'Thermal equilibrium hole concentration in n-type silicon')
 
         @func
         def calc_si_type(self):
@@ -342,6 +342,63 @@ def test_silicon():
     assert s.p_oP == 1e16 * cm ** -3
 
 
-# TODO test get descirption and such
+def test_incorrect_functions():
+    class InheritedClass(PyEquations):
 
-# TODO test incorrectly made functions
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @func
+        def calc_x(self):
+            return self.x
+
+        @eq
+        def calc_y(self):
+            return 1
+
+    inherit = InheritedClass()
+
+    try:
+        inherit.solve()
+    except RuntimeError:
+        assert True
+    except TypeError:
+        assert True
+    else:
+        assert False
+
+
+def test_variable_descriptions():
+    class InheritedClass(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x', 'x description')
+            self.add_var('y', 'y description')
+
+
+    inherit = InheritedClass()
+
+    assert inherit.get_var_description('x') == 'x description'
+    assert inherit.get_var_description('y') == 'y description'
+    assert inherit.var_descriptions() == {'x': 'x description', 'y': 'y description'}
+
+    try:
+        inherit.get_var_description('z')
+    except KeyError:
+        assert True
+    else:
+        assert False
+
+    inherit.add_var('z', 'z description')
+
+    print(inherit.vars())
+
+    assert inherit.vars() == {'x': symbols('x'), 'y': symbols('y'), 'z': symbols('z')}
+    assert inherit.solved_vars() == {}
+
+    inherit.x = 1
+
+    assert inherit.solved_vars() == {'x': 1}

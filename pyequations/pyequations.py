@@ -193,7 +193,7 @@ class PyEquations:
         # Re-evaluate all the user defined functions in case of new information
         self._eval_funcs()
 
-    def add_variable(self, name: str, description: str = '') -> None:
+    def add_var(self, name: str, description: str = '') -> None:
         """
         Add a variable to the class
         :param name: The name of the variable
@@ -220,7 +220,7 @@ class PyEquations:
         if isinstance(description, str):
             self.variable_descriptions[name] = description
 
-    def get_variable_description(self, name: str) -> str:
+    def get_var_description(self, name: str) -> str:
         """
         Get the description of a variable
         :param name: The name of the variable
@@ -229,12 +229,12 @@ class PyEquations:
 
         # Raise an exception if the variable does not exist
         if not hasattr(self, name) and name not in self.variable_descriptions:
-            raise Exception(f'Variable {name} does not exist')
+            raise KeyError(f'Variable {name} does not exist')
 
         # Return the description of the variable
         return self.variable_descriptions[name]
 
-    def get_variable_value(self, name: str) -> Symbol | Number:
+    def get_var_val(self, name: str) -> Symbol | Number:
         """
         Get the value of a variable
         :param name: The name of the variable
@@ -248,7 +248,7 @@ class PyEquations:
         # Return the value of the variable
         return getattr(self, name)
 
-    def get_all_variables(self) -> dict[str, Symbol | Number]:
+    def vars(self) -> dict[str, Symbol | Number]:
         """
         Get all variable
         :return: A dictionary of all variables
@@ -258,26 +258,16 @@ class PyEquations:
 
         return variables
 
-    def get_all_variable_descriptions(self) -> dict[str: str]:
+    def var_descriptions(self) -> dict[str: str]:
         """
         Get all variable descriptions
         :return: A list of all variable descriptions
         """
 
-        # Return a dictionary of all variable descriptions
-        return sorted(self.variable_descriptions.copy())
+        # Return a dictionary of all variable descriptions sorted by variable name
+        return {name: self.variable_descriptions[name] for name in sorted(self.variable_descriptions.keys())}
 
-    def get_all_variables_and_descriptions(self) -> dict[str, Symbol | Number]:
-        """
-        Get all variables and descriptions
-        :return: A list of all variables and descriptions
-        """
-
-        # Have the key be "variable_name - description"
-        return {f'{name} - {self.variable_descriptions[name]}': getattr(self, name) for name in
-                sorted(self.variable_descriptions.keys())}
-
-    def get_known_variables(self) -> dict[str, Symbol | Number]:
+    def solved_vars(self) -> dict[str, Symbol | Number]:
         """
         Get all known variables
         :return: A dictionary of all known variables
@@ -286,23 +276,3 @@ class PyEquations:
         # Return a dictionary of all known variables
         return {name: getattr(self, name) for name in sorted(self.variable_descriptions.keys()) if
                 getattr(self, name) != symbols(name)}
-
-    def get_known_variable_descriptions(self) -> dict[str: str]:
-        """
-        Get all known variable descriptions
-        :return: A list of all known variable descriptions
-        """
-
-        # Return a dictionary of all known variable descriptions
-        return {name: self.variable_descriptions[name] for name in sorted(self.variable_descriptions.keys()) if
-                getattr(self, name) != symbols(name)}
-
-    def get_known_variables_and_descriptions(self) -> dict[str, Symbol | Number]:
-        """
-        Get all known variables and descriptions
-        :return: A list of all known variables and descriptions
-        """
-
-        # Have the key be "variable_name - description"
-        return {f'{name} - {self.variable_descriptions[name]}': getattr(self, name) for name in
-                sorted(self.variable_descriptions.keys()) if getattr(self, name) != symbols(name)}
