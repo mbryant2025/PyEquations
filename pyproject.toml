@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "pyequations"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "A Python package for solving a bunch of equations with a bunch of uknowns."
+authors = ["Michael Bryant <mbryant2025@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"

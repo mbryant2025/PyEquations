@@ -1,12 +1,12 @@
-from sympy import symbols, Eq
-from sympy.physics.units import cm
+from sympy import symbols, Eq, sqrt, I
+from sympy.physics.units import cm, meter, second
 from pyequations import __version__
+from pyequations.inheritables import _get_symbols, PyEquations
+from pyequations.utils import solved
+from pyequations.decorators import eq, func
 
-from pyequations.pyequations import _get_symbols, eq, func, PyEquations, solved
 
-# Make a tolerance function mark as exempt from testing
-
-def within_tolerance(expected, actual, percent=1):
+def within_tolerance(expected, actual, percent=0.001):
     return abs(expected - actual) <= abs(expected * percent / 100)
 
 def test_version():
@@ -211,14 +211,271 @@ def test_multiple_solutions():
 
     inherit = InheritedClass()
 
-    # Should raise an exception as there are multiple solutions
-    # Expect this exception:  Exception: Equations have multiple solutions: [(-2,), (2,)]
-    try:
-        inherit.solve()
-    except RuntimeError:
-        assert True
-    else:
-        assert False
+    inherit.solve()
+
+    print(inherit.vars())
+
+    # For multiple solutions, should branch for each possible set of solutions
+
+    assert inherit.num_branches() == 4
+
+    assert inherit.vars() == [{'x': -2, 'y': -4}, {'x': 2, 'y': -4}, {'x': 2, 'y': 4}, {'x': -2, 'y': 4}]
+
+
+def test_multiple_solutions_2():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return 2 * self.x ** 2 + 3 * self.y ** 2, 1
+
+        @eq
+        def eq2(self):
+            return self.x ** 2, self.y ** 2
+
+    p = Problem()
+
+    p.solve()
+
+    # Should be four different solution branches
+    assert p.num_branches() == 4
+
+    assert p.vars() == [{'x': -sqrt(5)/5, 'y': -sqrt(5)/5}, {'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'x': sqrt(5)/5, 'y': -sqrt(5)/5}, {'x': sqrt(5)/5, 'y': sqrt(5)/5}]
+
+
+def test_some_multiple_some_single_solution():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
+
+        @eq
+        def eq1(self):
+            return 2 * self.x ** 2 + 3 * self.y ** 2, 1
+
+        @eq
+        def eq2(self):
+            return self.x ** 2, self.y ** 2
+
+        @eq
+        def eq3(self):
+            return self.z, 10
+
+    # Identical as before, except that we have an extra equation that is not dependent on x or y
+    # In this case, we should only have two branches, as the third equation is the same
+
+    p = Problem()
+
+    p.solve()
+
+    # Importantly, we should still only have 4 branches
+    assert p.num_branches() == 4
+
+    assert p.vars() == [{'x': -sqrt(5)/5, 'y': -sqrt(5)/5, 'z': 10}, {'x': -sqrt(5)/5, 'y': sqrt(5)/5, 'z': 10}, {'x': sqrt(5)/5, 'y': -sqrt(5)/5, 'z': 10}, {'x': sqrt(5)/5, 'y': sqrt(5)/5, 'z': 10}]
+
+
+def test_some_multiple_some_single_solution_2():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('a')
+            self.add_var('b')
+            self.add_var('c')
+
+        @eq
+        def eq1(self):
+            return 2 * self.x ** 2 + 3 * self.y ** 2, 1
+
+        @eq
+        def eq2(self):
+            return self.x ** 2, self.y ** 2
+
+        @eq
+        def eq3(self):
+            return self.a, self.b + self.c
+
+        @eq
+        def eq4(self):
+            return self.b, 3 * self.c + self.a
+
+        @eq
+        def eq5(self):
+            return self.c, self.a * 4 + 6
+
+    # Identical as before, once again
+    # Except, that we have a consistent system of equations
+    # This tests highlights a consistent system with more variables than the one with multiple branches
+    # This highlights that the number of branches is not dependent on the number of variables
+
+    p = Problem()
+
+    p.solve()
+
+    print(p.vars())
+
+    assert p.num_branches() == 4
+
+    assert p.vars() == [{'a': -3/2, 'b': -3/2, 'c': 0, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -3/2, 'b': -3/2, 'c': 0, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': -3/2, 'b': -3/2, 'c': 0, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -3/2, 'b': -3/2, 'c': 0, 'x': sqrt(5)/5, 'y': sqrt(5)/5}]
+
+
+def test_multiple_multiple_solutions():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('a')
+            self.add_var('b')
+            self.add_var('c')
+
+        @eq
+        def eq1(self):
+            return 2 * self.x ** 2 + 3 * self.y ** 2, 1
+
+        @eq
+        def eq2(self):
+            return self.x ** 2, self.y ** 2
+
+        @eq
+        def eq3(self):
+            return self.a, self.b + self.c
+
+        @eq
+        def eq4(self):
+            return self.b, 3 * self.c + self.a
+
+        @eq
+        def eq5(self):
+            return self.c, self.a ** 2 - 4
+
+    # Identical as before, once again
+    # Except, that we have a second system with multiple solutions
+    # Again, checking mostly branch number, and also that the solutions are correct, of course
+    # Want to avoid redundant results from different branches
+
+    p = Problem()
+
+    p.solve()
+
+    assert p.num_branches() == 8
+
+    assert p.vars() == [{'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5}]
+
+def test_multiple_multiple_solutions_2():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('a')
+            self.add_var('b')
+            self.add_var('c')
+            self.add_var('m')
+
+        @eq
+        def eq1(self):
+            return 2 * self.x ** 2 + 3 * self.y ** 2, 1
+
+        @eq
+        def eq2(self):
+            return self.x ** 2, self.y ** 2
+
+        @eq
+        def eq3(self):
+            return self.a, self.b + self.c
+
+        @eq
+        def eq4(self):
+            return self.b, 3 * self.c + self.a
+
+        @eq
+        def eq5(self):
+            return self.c, self.a ** 2 - 4
+
+        @eq
+        def eq6(self):
+            return self.m**2, 16
+
+
+    # Identical as before, once again
+    # Except, that we have a third system with multiple solutions
+    # Again, checking mostly branch number, and also that the solutions are correct, of course
+    # Want to avoid redundant results from different branches
+
+    p = Problem()
+
+    p.solve()
+
+    assert p.num_branches() == 16
+
+    assert p.vars() == [{'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5}]
+
+
+def test_complex_solutions():
+    class ComplexSystem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+
+        @eq
+        def eq1(self):
+            return self.x**2 + 4, 0
+
+    # This is a system with complex solutions
+
+    c = ComplexSystem()
+
+    c.solve()
+
+    assert c.num_branches() == 2
+
+    assert c.vars() == [{'x': -2*I}, {'x': 2*I}]
 
 
 def test_infinite_solutions():
@@ -235,7 +492,7 @@ def test_infinite_solutions():
 
         @eq
         def calc_y(self):
-            return self.y, self.x
+            return 3 * self.y, 3 * self.x
 
     inherit = InheritedClass()
 
@@ -245,6 +502,94 @@ def test_infinite_solutions():
     assert inherit.x == symbols('x')
     assert inherit.y == symbols('y')
 
+
+def test_complicated_solution_set():
+    class Inherit(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('w')
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
+
+        @eq
+        def eq1(self):
+            return self.w, 64
+
+        @eq
+        def eq2(self):
+            return self.y**2, self.z**2 + self.w
+
+        @eq
+        def eq3(self):
+            return self.y, 8 * self.z
+
+        @eq
+        def eq4(self):
+            return self.z, self.y + self.x
+
+    inherit = Inherit()
+
+    # In this setup, w is always 64 whereas y and z have multiple solutions.
+    # Furthermore, z is dependent on y and x, so z also has multiple solutions.
+
+    inherit.solve()
+
+    print(inherit.vars())
+
+    assert inherit.num_branches() == 2
+
+    assert inherit.vars() == [{'w': 64, 'x': 8*sqrt(7)/3, 'y': -64*sqrt(7)/21, 'z': -8*sqrt(7)/21},
+                              {'w': 64, 'x': -8*sqrt(7)/3, 'y': 64*sqrt(7)/21, 'z': 8*sqrt(7)/21}]
+
+
+def test_add_var():
+    class Inherit(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+
+        @eq
+        def eq1(self):
+            return self.x**2, 4
+
+    inherit = Inherit()
+
+    # Want to test that adding a variable after the solution set has branched
+    # Want new variable to be added to all branches
+
+    inherit.solve()
+
+    assert inherit.num_branches() == 2
+
+    inherit.add_var('z')
+
+    # Add new equation that depends on new variable
+
+    @eq
+    def eq2(self):
+        return self.z, self.x + 1
+
+    Inherit.eq2 = eq2
+
+    inherit.solve()
+
+    assert inherit.num_branches() == 2
+
+    print(inherit.vars())
+
+    assert 0
+
+    # TODO need to gather functions when we solve not on init
+
+
+# TODO test one branch fails
+
+# TODO test change propagates
 
 def test_func():
     class InheritedClass(PyEquations):
@@ -279,8 +624,70 @@ def test_func():
     assert inherit.y == 3
 
 
+def test_incorrect_functions():
+    class InheritedClass(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @func
+        def calc_x(self):
+            return self.x
+
+        @eq
+        def calc_y(self):
+            return 1
+
+    inherit = InheritedClass()
+
+    try:
+        inherit.solve()
+    except RuntimeError:
+        assert True
+    except TypeError:
+        assert True
+    else:
+        assert False
+
+
+# def test_variable_descriptions():
+#     class InheritedClass(PyEquations):
+#
+#         def __init__(self):
+#             super().__init__()
+#             self.add_var('x', 'x description')
+#             self.add_var('y', 'y description')
+#
+#
+#     inherit = InheritedClass()
+#
+#     assert inherit.get_var_description('x') == 'x description'
+#     assert inherit.get_var_description('y') == 'y description'
+#     assert inherit.var_descriptions() == {'x': 'x description', 'y': 'y description'}
+#
+#     try:
+#         inherit.get_var_description('z')
+#     except KeyError:
+#         assert True
+#     else:
+#         assert False
+#
+#     inherit.add_var('z', 'z description')
+#
+#     print(inherit.vars())
+#
+#     assert inherit.vars() == {'x': symbols('x'), 'y': symbols('y'), 'z': symbols('z')}
+#     assert inherit.solved_vars() == {}
+#
+#     inherit.x = 1
+#
+#     assert inherit.solved_vars() == {'x': 1}
+
+
 def test_silicon():
-    n_i_300K = 1.07e10 * cm ** -3
+    n_i = 1.07e10 * cm ** -3
 
     class Silicon(PyEquations):
 
@@ -316,11 +723,11 @@ def test_silicon():
 
         @eq
         def calc_p_oP2(self):
-            return self.p_oP, n_i_300K ** 2 / self.n_oP
+            return self.p_oP, n_i ** 2 / self.n_oP
 
         @eq
         def calc_n_oN1(self):
-            return self.n_oN, n_i_300K ** 2 / self.p_oN
+            return self.n_oN, n_i ** 2 / self.p_oN
 
         @eq
         def calc_n_oN2(self):
@@ -342,63 +749,78 @@ def test_silicon():
     assert s.p_oP == 1e16 * cm ** -3
 
 
-def test_incorrect_functions():
-    class InheritedClass(PyEquations):
+def test_kinematic():
+    # noinspection PyUnresolvedReferences
+    class Kinematic(PyEquations):
 
         def __init__(self):
             super().__init__()
-            self.add_var('x')
-            self.add_var('y')
-
-        @func
-        def calc_x(self):
-            return self.x
+            self.add_var('x_0', 'Initial position')
+            self.add_var('x_f', 'Final position')
+            self.add_var('v_0', 'Initial velocity')
+            self.add_var('v_f', 'Final velocity')
+            self.add_var('a', 'Acceleration')
+            self.add_var('t', 'Time')
 
         @eq
-        def calc_y(self):
-            return 1
+        def calc_v_f(self):
+            return self.v_f, self.v_0 + self.a * self.t
 
-    inherit = InheritedClass()
+        @eq
+        def calc_x_f(self):
+            return self.x_f, self.x_0 + self.v_0 * self.t + 0.5 * self.a * self.t ** 2
 
-    try:
-        inherit.solve()
-    except RuntimeError:
-        assert True
-    except TypeError:
-        assert True
-    else:
-        assert False
+        @eq
+        def calc_v_f2(self):
+            return self.v_f ** 2, self.v_0 ** 2 + 2 * self.a * (self.x_f - self.x_0)
 
+        @eq
+        def calc_x_f2(self):
+            return self.x_f, self.x_0 + 0.5 * (self.v_0 + self.v_f) * self.t
 
-def test_variable_descriptions():
-    class InheritedClass(PyEquations):
+    k = Kinematic()
 
-        def __init__(self):
-            super().__init__()
-            self.add_var('x', 'x description')
-            self.add_var('y', 'y description')
+    k.x_0 = 0 * meter
+    k.v_0 = -3 * meter / second
+    k.a = 9.8 * meter / second ** 2
+    k.t = 10 * second
 
+    k.solve()
 
-    inherit = InheritedClass()
+    # Calculated values are correct
+    assert k.x_f == 460.0 * meter
+    assert k.v_f == 95.0 * meter / second
 
-    assert inherit.get_var_description('x') == 'x description'
-    assert inherit.get_var_description('y') == 'y description'
-    assert inherit.var_descriptions() == {'x': 'x description', 'y': 'y description'}
+    # Original values are maintained
+    assert k.x_0 == 0 * meter
+    assert k.v_0 == -3 * meter / second
+    assert k.a == 9.8 * meter / second ** 2
+    assert k.t == 10 * second
 
-    try:
-        inherit.get_var_description('z')
-    except KeyError:
-        assert True
-    else:
-        assert False
+    # Clear th initial position and velocity
+    k.clear_var('x_0', 'v_0')
 
-    inherit.add_var('z', 'z description')
+    # Check that the initial position and velocity are cleared
+    assert k.x_0 == symbols('x_0')
+    assert k.v_0 == symbols('v_0')
 
-    print(inherit.vars())
+    # Re-solve the equations
+    k.solve()
 
-    assert inherit.vars() == {'x': symbols('x'), 'y': symbols('y'), 'z': symbols('z')}
-    assert inherit.solved_vars() == {}
+    # Check that the calculated values are correct
+    assert k.x_0 == 0 * meter
+    assert k.v_0 == -3.0 * meter / second
 
-    inherit.x = 1
+    # Clear the time and initial velocity
+    k.clear_var('t', 'v_0')
 
-    assert inherit.solved_vars() == {'x': 1}
+    # Check that the time and initial velocity are cleared
+    assert k.t == symbols('t')
+    assert k.v_0 == symbols('v_0')
+
+    # Re-solve the equations
+    k.solve()
+
+    # Check that the calculated values are correct
+    assert k.t == 10.0 * second
+    assert k.v_0 == -3.0 * meter / second
