@@ -4,6 +4,7 @@ from pyequations import __version__
 from pyequations.inheritables import _get_symbols, PyEquations
 from pyequations.utils import solved
 from pyequations.decorators import eq, func
+from pytest import raises
 
 
 def within_tolerance(expected, actual, percent=0.001):
@@ -99,30 +100,49 @@ def test_no_solutions():
             super().__init__()
             self.add_var('x')
             self.add_var('y')
-            self.add_var('z')
 
         @eq
-        def calc_x(self):
-            return self.x, self.y + self.z
+        def eq1(self):
+            return self.y, self.x + 1
 
         @eq
-        def calc_y(self):
-            return 5 * self.x + self.z, -self.y
-
-        @eq
-        def calc_z(self):
-            return self.x + self.y, self.z / 4 + 10
+        def eq2(self):
+            return self.y, 2 * self.x
 
     inherit = InheritedClass()
 
-    inherit.x = 1
+    # The solution to this system is x=1, y=2
 
-    # Should raise an exception as there are no solutions with x = 1
-    try:
+    # So...
+    inherit.x = 5
+
+    # Solving should raise runtime error
+    with raises(RuntimeError):
         inherit.solve()
-        assert False
-    except Exception:
-        assert True
+
+
+def test_parallel_lines():
+    class Parallel(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return self.y, self.x + 1
+
+        @eq
+        def eq2(self):
+            return self.y, self.x + 2
+
+    # Parallel lines have no intersection and therefore no solution
+    # Should raise runtime error
+    parallel = Parallel()
+
+    with raises(RuntimeError):
+        parallel.solve()
 
 
 def test_mix_units():
@@ -248,7 +268,7 @@ def test_multiple_solutions_2():
     assert p.num_branches() == 4
 
     expected = [{'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}, {'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'x': sqrt(5) / 5, 'y': -sqrt(5) / 5}, {'x': sqrt(5) / 5, 'y': sqrt(5) / 5}]
+                {'x': sqrt(5) / 5, 'y': -sqrt(5) / 5}, {'x': sqrt(5) / 5, 'y': sqrt(5) / 5}]
 
     assert_dicts_equal(expected, p.vars())
 
@@ -286,7 +306,7 @@ def test_some_multiple_some_single_solution():
     assert p.num_branches() == 4
 
     expected = [{'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5, 'z': 10}, {'x': -sqrt(5) / 5, 'y': sqrt(5) / 5, 'z': 10},
-                        {'x': sqrt(5) / 5, 'y': -sqrt(5) / 5, 'z': 10}, {'x': sqrt(5) / 5, 'y': sqrt(5) / 5, 'z': 10}]
+                {'x': sqrt(5) / 5, 'y': -sqrt(5) / 5, 'z': 10}, {'x': sqrt(5) / 5, 'y': sqrt(5) / 5, 'z': 10}]
 
     assert_dicts_equal(expected, p.vars())
 
@@ -336,10 +356,10 @@ def test_some_multiple_some_single_solution_2():
 
     print(p.vars())
 
-    expected = [{'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                {'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
-                {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5)/5, 'y': sqrt(5)/5}]
+    expected = [{'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5}]
 
     assert_dicts_equal(expected, p.vars())
 
@@ -388,13 +408,13 @@ def test_multiple_multiple_solutions():
     assert p.num_branches() == 8
 
     expected = [{'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}]
+                {'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}]
 
     assert_dicts_equal(expected, p.vars())
 
@@ -448,21 +468,21 @@ def test_multiple_multiple_solutions_2():
     assert p.num_branches() == 16
 
     expected = [{'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}]
+                {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}]
 
     assert_dicts_equal(expected, p.vars())
 
@@ -554,7 +574,7 @@ def test_complicated_solution_set():
     assert inherit.num_branches() == 2
 
     expected = [{'w': 64, 'x': 8 * sqrt(7) / 3, 'y': -64 * sqrt(7) / 21, 'z': -8 * sqrt(7) / 21},
-                              {'w': 64, 'x': -8 * sqrt(7) / 3, 'y': 64 * sqrt(7) / 21, 'z': 8 * sqrt(7) / 21}]
+                {'w': 64, 'x': -8 * sqrt(7) / 3, 'y': 64 * sqrt(7) / 21, 'z': 8 * sqrt(7) / 21}]
 
     assert_dicts_equal(expected, inherit.vars())
 
@@ -722,38 +742,6 @@ def test_incorrect_functions():
         assert False
 
 
-# def test_variable_descriptions():
-#     class InheritedClass(PyEquations):
-#
-#         def __init__(self):
-#             super().__init__()
-#             self.add_var('x', 'x description')
-#             self.add_var('y', 'y description')
-#
-#
-#     inherit = InheritedClass()
-#
-#     assert inherit.get_var_description('x') == 'x description'
-#     assert inherit.get_var_description('y') == 'y description'
-#     assert inherit.var_descriptions() == {'x': 'x description', 'y': 'y description'}
-#
-#     try:
-#         inherit.get_var_description('z')
-#     except KeyError:
-#         assert True
-#     else:
-#         assert False
-#
-#     inherit.add_var('z', 'z description')
-#
-#     assert inherit.vars() == {'x': symbols('x'), 'y': symbols('y'), 'z': symbols('z')}
-#     assert inherit.solved_vars() == {}
-#
-#     inherit.x = 1
-#
-#     assert inherit.solved_vars() == {'x': 1}
-
-
 def test_silicon():
     n_i = 1.07e10 * cm ** -3
 
@@ -900,11 +888,10 @@ def test_kinematic():
     print(k.get_branches_var('v_0'))
 
     assert set(k.get_branches_var('v_0')) == {3.0 * meter / second, -3.0 * meter / second}
-    assert set(k.get_branches_var('t')) == {2.0 * second, 68/49 * second}
+    assert set(k.get_branches_var('t')) == {2.0 * second, 68 / 49 * second}
 
 
 def test_kinematic_parse():
-
     class Kinematic(PyEquations):
 
         def __init__(self):
@@ -974,7 +961,6 @@ def test_kinematic_parse():
     assert set(k.get_branches_var('v_0')) == {3.0 * meter / second}
     assert set(k.get_branches_var('t')) == {2.0 * second}
 
-
 # TODO test more with units
 
 # TODO test get_var_vals
@@ -983,4 +969,6 @@ def test_kinematic_parse():
 
 # TODO test change propagates
 
-# TODO not how we won't remove final branch
+# TODO test getter functions
+
+# TODO note how we won't remove final branch

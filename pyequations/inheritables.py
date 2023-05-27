@@ -24,6 +24,29 @@ def _is_solved(var) -> bool:
     return not isinstance(var, Symbol)
 
 
+class VariableNotSolvedError(Exception):
+    """
+    Exception to be raised when a variable is not solved and is used in a calculation
+    These exceptions are caught and the calculation is skipped if in a @func decorated function
+    """
+
+    def __init__(self, var: Symbol):
+        """
+        Initialize the exception
+        :param var: The variable that is not solved
+        """
+
+        self.var = var
+
+    def __str__(self):
+        """
+        Get the string representation of the exception
+        :return: The string representation of the exception
+        """
+
+        return f'Variable {self.var} is not solved'
+
+
 class PyEquations:
 
     def __init__(self):
@@ -116,13 +139,17 @@ class PyEquations:
         :return: None
         """
 
-        # Loop through all the user defined functions and evaluate them
+        # Loop through all the user-defined functions and evaluate them
         for f in self.funcs:
-            # Evaluate the function
             try:
+                # Evaluate the function
                 f()
-            except Exception:
-                continue # TODO nmake custom exception
+            except VariableNotSolvedError:
+                continue
+            except Exception as e:
+                # Reraise the exception with a custom error message
+                continue  # TODO fix this
+                # raise Exception(f'Error evaluating function {f.__name__}: {str(e)}')
 
     def _verify_and_extract_solution(self, solution, target_variables) -> dict | None:
         """
@@ -230,17 +257,19 @@ class PyEquations:
         for function in self.eqs:
             result = function()
             if len(result) == 2:
-                equations.append(Eq(*result))
+                resulting_eq = Eq(*result)
+                if resulting_eq == False:
+                    # If the equation is False, double check for floating point errors by seeing if
+                    # either element in result is within tolerance % of the other
+                    tolerance = 0.0001
+                    if abs(result[0] - result[1]) <= tolerance * result[0]:
+                        continue
+                    else:
+                        raise RuntimeError(f'Equation is False: {resulting_eq}')
+                else:
+                    equations.append(resulting_eq)
             else:
                 raise ValueError("Function does not return two elements")
-
-        # If any of the equations are False, the system has no solution, throw an exception # TODO check for false
-        # if false_equations := [e for e in equations if e == False]:
-        #     # Locate the functions that created the false equations
-        #     if (false_functions := [function for function in self.eqs if
-        #                             Eq(*function()) in false_equations]):
-        #         # Raise an exception with the functions that created the false equations
-        #         raise RuntimeError(f'Equations have no solutions: {false_functions}')
 
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
@@ -254,6 +283,10 @@ class PyEquations:
 
                 # Attempt to solve the subgroup of equations
                 solution = solve(subgroup, *target_variables)
+
+                # If solution == [], there is no solution for this subgroup, raise an exception
+                if not solution:
+                    raise RuntimeError(f'Equations have no solutions: {subgroup}')
 
                 # Verify the solution is valid, handle solution branching
                 sol = self._verify_and_extract_solution(solution, target_variables)
@@ -279,6 +312,7 @@ class PyEquations:
         :return: None
         """
 
+        # List comprehension to run the solver on current branches and not have concurrent modification issues
         for branch in [b for b in self.children_branches]:
             branch._run_solver_this_branch()
 
@@ -461,7 +495,6 @@ class PyEquations:
 
         del self
 
-
 # TODO add threads to branches
 
 # TODO update dependencies
@@ -473,3 +506,5 @@ class PyEquations:
 # Set variables for all branches
 
 # Throw warning when using .x when multiple branches (__setattr__)
+
+# TODO note how parallel lines will not say no solutions yet setting a system variable incorrectly will
