@@ -1032,7 +1032,6 @@ def test_change_all_branches():
 
 
 def test_multilevel_inheritance():
-
     class Base(PyEquations):
 
         def __init__(self):
@@ -1078,7 +1077,6 @@ def test_multilevel_inheritance():
 
 
 def test_save_root_branch():
-
     class Problem(PyEquations):
 
         def __init__(self):
@@ -1135,7 +1133,6 @@ def test_solved_vars():
 
 
 def test_var_descriptions():
-
     class Problem(PyEquations):
 
         def __init__(self):
@@ -1180,7 +1177,6 @@ def test_num_branches():
 
 
 def test_vars():
-
     class Problem(PyEquations):
 
         def __init__(self):
@@ -1201,7 +1197,6 @@ def test_vars():
 
 
 def test_get_var_description():
-
     class Problem(PyEquations):
 
         def __init__(self):
@@ -1217,4 +1212,43 @@ def test_get_var_description():
     assert p.get_var_description('z') == 'z position'
 
 
-# TODO test more with units
+def test_complicated_solution_set_units():
+    class Inherit(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('w')
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
+
+        @eq
+        def eq2(self):
+            return self.y ** 2, self.z ** 2 + self.w
+
+        @eq
+        def eq3(self):
+            return self.y, 8 * self.z
+
+        @eq
+        def eq4(self):
+            return self.z, self.y + self.x
+
+    inherit = Inherit()
+
+    # Same as the previous test_complicated_solution_set, but with units
+    # Chosen because the solution set is complicated and the units could be a source of error
+
+    inherit.w = 64 * meter
+
+    inherit.solve()
+
+    assert inherit.num_branches() == 2
+
+    expected = [{'w': 64 * meter, 'x': 8 * sqrt(7) * sqrt(meter) / 3, 'y': -64 * sqrt(7) * sqrt(meter) / 21,
+                 'z': -8 * sqrt(7) * sqrt(meter) / 21},
+                {'w': 64 * meter, 'x': -8 * sqrt(7) * sqrt(meter) / 3, 'y': 64 * sqrt(7) * sqrt(meter) / 21,
+                 'z': 8 * sqrt(7) * sqrt(meter) / 21}]
+
+    assert_dicts_equal(expected, inherit.vars())

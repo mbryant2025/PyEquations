@@ -24,29 +24,6 @@ def _is_solved(var) -> bool:
     return not isinstance(var, Symbol)
 
 
-class VariableNotSolvedError(Exception):
-    """
-    Exception to be raised when a variable is not solved and is used in a calculation
-    These exceptions are caught and the calculation is skipped if in a @func decorated function
-    """
-
-    def __init__(self, var: Symbol):
-        """
-        Initialize the exception
-        :param var: The variable that is not solved
-        """
-
-        self.var = var
-
-    def __str__(self):
-        """
-        Get the string representation of the exception
-        :return: The string representation of the exception
-        """
-
-        return f'Variable {self.var} is not solved'
-
-
 class PyEquations:
 
     def __init__(self):
@@ -144,12 +121,10 @@ class PyEquations:
             try:
                 # Evaluate the function
                 f()
-            except VariableNotSolvedError:
+            except Exception:
+                # If the function raises an exception, skip it
+                # Ideally, it would have a custom exception that is caught and handled
                 continue
-            except Exception as e:
-                # Reraise the exception with a custom error message
-                continue  # TODO fix this
-                # raise Exception(f'Error evaluating function {f.__name__}: {str(e)}')
 
     def _verify_and_extract_solution(self, solution, target_variables) -> dict | None:
         """
@@ -328,7 +303,8 @@ class PyEquations:
         """
 
         # List comprehension to run the solver on current branches and not have concurrent modification issues
-        for branch in [b for b in self.children_branches]:
+        # Could use multiprocessing here, but would require to serialize the PyEquations object
+        for branch in [b for b in self.root_link.children_branches]:
             branch._run_solver_this_branch()
 
     def add_var(self, name: str, description: str = '') -> None:
@@ -510,7 +486,6 @@ class PyEquations:
 
         del self
 
-# TODO add threads to branches
 
 # TODO update dependencies
 
