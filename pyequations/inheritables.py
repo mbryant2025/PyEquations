@@ -240,6 +240,37 @@ class PyEquations:
             # Unknown type, not a valid solution. Throw an exception
             raise RuntimeError(f'Unknown solution type {solution}')
 
+    def _retrieve_equations(self) -> list:
+        """
+        Retrieve all the equations from the calculation functions
+        :return: A list of equations
+        """
+
+        equations = []
+
+        for function in self.eqs:
+            result = function()
+            if len(result) == 2:
+                resulting_eq = Eq(*result)
+                if resulting_eq == False:
+                    # If the equation is False, double check for floating point errors by seeing if
+                    # either element in result is within tolerance % of the other
+                    tolerance = 0.0001
+                    if abs(result[0] - result[1]) <= tolerance * result[0]:
+                        continue
+                    else:
+                        # If there are more than one branches, kill this one
+                        if len(self.root_link.children_branches) > 1:
+                            self.del_branch()
+                        else:
+                            raise RuntimeError(f'Equation is False: {resulting_eq}')
+                else:
+                    equations.append(resulting_eq)
+            else:
+                raise ValueError("Function does not return two elements")
+
+        return equations
+
     def _run_solver_this_branch(self) -> None:
         """
         Solve the equations by substituting solutions in place of unknown variables
@@ -253,23 +284,7 @@ class PyEquations:
         self._eval_funcs()
 
         # Gather all the equations from the calculation functions that have an unknown variable
-        equations = []
-        for function in self.eqs:
-            result = function()
-            if len(result) == 2:
-                resulting_eq = Eq(*result)
-                if resulting_eq == False:
-                    # If the equation is False, double check for floating point errors by seeing if
-                    # either element in result is within tolerance % of the other
-                    tolerance = 0.0001
-                    if abs(result[0] - result[1]) <= tolerance * result[0]:
-                        continue
-                    else:
-                        raise RuntimeError(f'Equation is False: {resulting_eq}')
-                else:
-                    equations.append(resulting_eq)
-            else:
-                raise ValueError("Function does not return two elements")
+        equations = self._retrieve_equations()
 
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
@@ -499,12 +514,6 @@ class PyEquations:
 
 # TODO update dependencies
 
-# If no solution, kill branch TODO
+# TODO github workflow
 
-# TODO add custom exception for when a variable is not numerically valued in func
-
-# Set variables for all branches
-
-# Throw warning when using .x when multiple branches (__setattr__)
-
-# TODO note how parallel lines will not say no solutions yet setting a system variable incorrectly will
+# TODO note how we won't remove final branch

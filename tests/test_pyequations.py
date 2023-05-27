@@ -961,14 +961,260 @@ def test_kinematic_parse():
     assert set(k.get_branches_var('v_0')) == {3.0 * meter / second}
     assert set(k.get_branches_var('t')) == {2.0 * second}
 
+
+def test_auto_del_branch():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 16
+
+        @eq
+        def eq2(self):
+            return self.x + self.y, 6
+
+        @eq
+        def eq3(self):
+            return self.y - self.x, -2
+
+    # With this system, a^2 = 16 creates branches for a = 4 and a = -4
+    # However, the second equation is only satisfied for a = 4
+    # This tests that the branch for a = -4 is deleted
+
+    p = Problem()
+
+    p.solve()
+
+    assert p.num_branches() == 1
+
+
+def test_change_all_branches():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('a')
+            self.add_var('b')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 16
+
+        @eq
+        def eq2(self):
+            return self.a, 2 * self.b
+
+    # This test has two immediate branches, x = 4 and x = -4
+    # The second equation does not contain enough information to determine a and b
+    # This tests adding enough information after branching to ensure that all branches are updated
+
+    p = Problem()
+
+    p.solve()
+
+    assert p.num_branches() == 2
+
+    p.a = 2
+
+    p.solve()
+
+    assert p.num_branches() == 2
+
+    expected = [{'a': 2, 'b': 1, 'x': 4}, {'a': 2, 'b': 1, 'x': -4}]
+
+    assert_dicts_equal(p.vars(), expected)
+
+
+def test_multilevel_inheritance():
+
+    class Base(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return self.x + self.y, 6
+
+        @eq
+        def eq2(self):
+            return self.x - self.y, 2
+
+    class Child(Base):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('z')
+
+        @eq
+        def eq3(self):
+            return self.z, self.x * self.y
+
+    class Grandchild(Child):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('a')
+
+        @eq
+        def eq4(self):
+            return self.a, self.z ** 2
+
+    g = Grandchild()
+
+    g.solve()
+
+    expected = [{'a': 64, 'x': 4, 'y': 2, 'z': 8}]
+
+    assert_dicts_equal(g.vars(), expected)
+
+
+def test_save_root_branch():
+
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 64
+
+        @eq
+        def eq2(self):
+            return self.x - self.y, 2
+
+        @eq
+        def eq3(self):
+            return self.x + self.y, 6
+
+    # This test has two immediate branches, x = 8 and x = -8
+    # The second equation has one solution, nether of which are x = -8 or x = 8
+    # This tests that the root branch is saved so there is always at least one branch
+
+    p = Problem()
+
+    # The error ensure that it is known that there are no solutions; the branch is preserved
+    with raises(RuntimeError):
+        p.solve()
+
+
+def test_solved_vars():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('z')
+
+        @eq
+        def eq1(self):
+            return self.x - self.y, 2
+
+        @eq
+        def eq2(self):
+            return self.x + self.y, 6
+
+    p = Problem()
+
+    p.solve()
+
+    # Assert that p.known_vars() has two keys
+    assert len(p.solved_vars()) == 2
+
+
+def test_var_descriptions():
+
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            # Can set description in either way
+            self.add_var('x', 'x position')
+            self.add_var('y', description='y position')
+            self.add_var('z', description='z position')
+
+        @eq
+        def eq1(self):
+            return self.x - self.y, 2
+
+        @eq
+        def eq2(self):
+            return self.x + self.y, 6
+
+    p = Problem()
+
+    expected = {'x': 'x position', 'y': 'y position', 'z': 'z position'}
+
+    assert p.var_descriptions() == expected
+
+
+def test_num_branches():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 16
+
+    p = Problem()
+
+    p.solve()
+
+    assert p.num_branches() == 2
+
+
+def test_vars():
+
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 16
+
+    p = Problem()
+
+    p.solve()
+
+    expected = [{'x': 4}, {'x': -4}]
+
+    assert_dicts_equal(p.vars(), expected)
+
+
+def test_get_var_description():
+
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x', 'x position')
+            self.add_var('y', description='y position')
+            self.add_var('z', description='z position')
+
+    p = Problem()
+
+    assert p.get_var_description('x') == 'x position'
+    assert p.get_var_description('y') == 'y position'
+    assert p.get_var_description('z') == 'z position'
+
+
 # TODO test more with units
-
-# TODO test get_var_vals
-
-# TODO test one branch fails
-
-# TODO test change propagates
-
-# TODO test getter functions
-
-# TODO note how we won't remove final branch
