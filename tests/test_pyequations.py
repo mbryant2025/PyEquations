@@ -9,6 +9,14 @@ from pyequations.decorators import eq, func
 def within_tolerance(expected, actual, percent=0.001):
     return abs(expected - actual) <= abs(expected * percent / 100)
 
+
+def assert_dicts_equal(expected, actual):
+    expected_set = {frozenset(d.items()) for d in expected}
+    actual_set = {frozenset(d.items()) for d in actual}
+
+    assert expected_set == actual_set
+
+
 def test_version():
     assert __version__ == '0.1.0'
 
@@ -82,8 +90,6 @@ def test_multiple_variables():
     assert inherit.x == 0
     assert inherit.y == 8
     assert inherit.z == -8
-
-    print(inherit.x, inherit.y, inherit.z)
 
 
 def test_no_solutions():
@@ -185,8 +191,6 @@ def test_solved_maximum():
 
     inherit.solve()
 
-    print(inherit.vars())
-
     # Check that as much as possible is solved
     assert inherit.x == 5
     assert inherit.y == symbols('y')
@@ -203,23 +207,20 @@ def test_multiple_solutions():
 
         @eq
         def calc_x(self):
-            return self.x**2, 4
+            return self.x ** 2, 4
 
         @eq
         def calc_y(self):
-            return self.y**2, 16
+            return self.y ** 2, 16
 
     inherit = InheritedClass()
 
     inherit.solve()
 
-    print(inherit.vars())
-
     # For multiple solutions, should branch for each possible set of solutions
-
     assert inherit.num_branches() == 4
 
-    assert inherit.vars() == [{'x': -2, 'y': -4}, {'x': 2, 'y': -4}, {'x': 2, 'y': 4}, {'x': -2, 'y': 4}]
+    assert_dicts_equal([{'x': 2, 'y': 4}, {'x': 2, 'y': -4}, {'x': -2, 'y': 4}, {'x': -2, 'y': -4}], inherit.vars())
 
 
 def test_multiple_solutions_2():
@@ -246,8 +247,10 @@ def test_multiple_solutions_2():
     # Should be four different solution branches
     assert p.num_branches() == 4
 
-    assert p.vars() == [{'x': -sqrt(5)/5, 'y': -sqrt(5)/5}, {'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'x': sqrt(5)/5, 'y': -sqrt(5)/5}, {'x': sqrt(5)/5, 'y': sqrt(5)/5}]
+    expected = [{'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}, {'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'x': sqrt(5) / 5, 'y': -sqrt(5) / 5}, {'x': sqrt(5) / 5, 'y': sqrt(5) / 5}]
+
+    assert_dicts_equal(expected, p.vars())
 
 
 def test_some_multiple_some_single_solution():
@@ -282,7 +285,10 @@ def test_some_multiple_some_single_solution():
     # Importantly, we should still only have 4 branches
     assert p.num_branches() == 4
 
-    assert p.vars() == [{'x': -sqrt(5)/5, 'y': -sqrt(5)/5, 'z': 10}, {'x': -sqrt(5)/5, 'y': sqrt(5)/5, 'z': 10}, {'x': sqrt(5)/5, 'y': -sqrt(5)/5, 'z': 10}, {'x': sqrt(5)/5, 'y': sqrt(5)/5, 'z': 10}]
+    expected = [{'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5, 'z': 10}, {'x': -sqrt(5) / 5, 'y': sqrt(5) / 5, 'z': 10},
+                        {'x': sqrt(5) / 5, 'y': -sqrt(5) / 5, 'z': 10}, {'x': sqrt(5) / 5, 'y': sqrt(5) / 5, 'z': 10}]
+
+    assert_dicts_equal(expected, p.vars())
 
 
 def test_some_multiple_some_single_solution_2():
@@ -307,15 +313,15 @@ def test_some_multiple_some_single_solution_2():
 
         @eq
         def eq3(self):
-            return self.a, self.b + self.c
+            return self.c, self.b + self.a
 
         @eq
         def eq4(self):
-            return self.b, 3 * self.c + self.a
+            return self.b, self.c - 1
 
         @eq
         def eq5(self):
-            return self.c, self.a * 4 + 6
+            return self.b / 2, self.a
 
     # Identical as before, once again
     # Except, that we have a consistent system of equations
@@ -326,14 +332,16 @@ def test_some_multiple_some_single_solution_2():
 
     p.solve()
 
-    print(p.vars())
-
     assert p.num_branches() == 4
 
-    assert p.vars() == [{'a': -3/2, 'b': -3/2, 'c': 0, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -3/2, 'b': -3/2, 'c': 0, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': -3/2, 'b': -3/2, 'c': 0, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -3/2, 'b': -3/2, 'c': 0, 'x': sqrt(5)/5, 'y': sqrt(5)/5}]
+    print(p.vars())
+
+    expected = [{'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
+                {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
+                {'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
+                {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5)/5, 'y': sqrt(5)/5}]
+
+    assert_dicts_equal(expected, p.vars())
 
 
 def test_multiple_multiple_solutions():
@@ -379,14 +387,17 @@ def test_multiple_multiple_solutions():
 
     assert p.num_branches() == 8
 
-    assert p.vars() == [{'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5}]
+    expected = [{'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}]
+
+    assert_dicts_equal(expected, p.vars())
+
 
 def test_multiple_multiple_solutions_2():
     class Problem(PyEquations):
@@ -423,8 +434,7 @@ def test_multiple_multiple_solutions_2():
 
         @eq
         def eq6(self):
-            return self.m**2, 16
-
+            return self.m ** 2, 16
 
     # Identical as before, once again
     # Except, that we have a third system with multiple solutions
@@ -437,22 +447,24 @@ def test_multiple_multiple_solutions_2():
 
     assert p.num_branches() == 16
 
-    assert p.vars() == [{'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': -sqrt(5)/5},
-                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5)/5, 'y': sqrt(5)/5},
-                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5)/5, 'y': -sqrt(5)/5}]
+    expected = [{'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': 4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
+                        {'a': -2, 'b': -2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': sqrt(5) / 5, 'y': sqrt(5) / 5},
+                        {'a': 2, 'b': 2, 'c': 0, 'm': -4, 'x': -sqrt(5) / 5, 'y': -sqrt(5) / 5}]
+
+    assert_dicts_equal(expected, p.vars())
 
 
 def test_complex_solutions():
@@ -465,7 +477,7 @@ def test_complex_solutions():
 
         @eq
         def eq1(self):
-            return self.x**2 + 4, 0
+            return self.x ** 2 + 4, 0
 
     # This is a system with complex solutions
 
@@ -475,7 +487,9 @@ def test_complex_solutions():
 
     assert c.num_branches() == 2
 
-    assert c.vars() == [{'x': -2*I}, {'x': 2*I}]
+    expected = [{'x': -2 * I}, {'x': 2 * I}]
+
+    assert_dicts_equal(expected, c.vars())
 
 
 def test_infinite_solutions():
@@ -520,7 +534,7 @@ def test_complicated_solution_set():
 
         @eq
         def eq2(self):
-            return self.y**2, self.z**2 + self.w
+            return self.y ** 2, self.z ** 2 + self.w
 
         @eq
         def eq3(self):
@@ -537,59 +551,13 @@ def test_complicated_solution_set():
 
     inherit.solve()
 
-    print(inherit.vars())
-
     assert inherit.num_branches() == 2
 
-    assert inherit.vars() == [{'w': 64, 'x': 8*sqrt(7)/3, 'y': -64*sqrt(7)/21, 'z': -8*sqrt(7)/21},
-                              {'w': 64, 'x': -8*sqrt(7)/3, 'y': 64*sqrt(7)/21, 'z': 8*sqrt(7)/21}]
+    expected = [{'w': 64, 'x': 8 * sqrt(7) / 3, 'y': -64 * sqrt(7) / 21, 'z': -8 * sqrt(7) / 21},
+                              {'w': 64, 'x': -8 * sqrt(7) / 3, 'y': 64 * sqrt(7) / 21, 'z': 8 * sqrt(7) / 21}]
 
+    assert_dicts_equal(expected, inherit.vars())
 
-def test_add_var():
-    class Inherit(PyEquations):
-
-        def __init__(self):
-            super().__init__()
-
-            self.add_var('x')
-
-        @eq
-        def eq1(self):
-            return self.x**2, 4
-
-    inherit = Inherit()
-
-    # Want to test that adding a variable after the solution set has branched
-    # Want new variable to be added to all branches
-
-    inherit.solve()
-
-    assert inherit.num_branches() == 2
-
-    inherit.add_var('z')
-
-    # Add new equation that depends on new variable
-
-    @eq
-    def eq2(self):
-        return self.z, self.x + 1
-
-    Inherit.eq2 = eq2
-
-    inherit.solve()
-
-    assert inherit.num_branches() == 2
-
-    print(inherit.vars())
-
-    assert 0
-
-    # TODO need to gather functions when we solve not on init
-
-
-# TODO test one branch fails
-
-# TODO test change propagates
 
 def test_func():
     class InheritedClass(PyEquations):
@@ -622,6 +590,108 @@ def test_func():
 
     assert inherit.x == 1
     assert inherit.y == 3
+
+
+def test_del_branch():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 4
+
+        @func
+        def constraint(self):
+            if self.x < 0:
+                self.del_branch()
+
+    # Check for func that deletes branch if a condition is met
+
+    problem = Problem()
+
+    problem.solve()
+
+    assert problem.num_branches() == 1
+
+
+def test_get_branches_var():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 4
+
+        @eq
+        def eq2(self):
+            return self.y, 2
+
+    # Check all possible values for a single variable given the solution branches
+    problem = Problem()
+
+    problem.solve()
+
+    assert problem.num_branches() == 2
+
+    assert problem.get_branches_var('x') == [2, -2]
+    assert problem.get_branches_var('y') == [2]
+
+
+def test_get_branches_var2():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+            self.add_var('y')
+            self.add_var('a')
+            self.add_var('b')
+            self.add_var('c')
+
+        @eq
+        def eq1(self):
+            return 2 * self.x ** 2 + 3 * self.y ** 2, 1
+
+        @eq
+        def eq2(self):
+            return self.x ** 2, self.y ** 2
+
+        @eq
+        def eq3(self):
+            return self.a, self.b + self.c
+
+        @eq
+        def eq4(self):
+            return self.b, 3 * self.c + self.a
+
+        @eq
+        def eq5(self):
+            return self.c, self.a ** 2 - 4
+
+    # Check all possible values for a single variable given the solution branches
+    # Except now there are 8 branches
+    # And, except for 'c' all variables have two possible values
+    problem = Problem()
+
+    problem.solve()
+
+    assert problem.num_branches() == 8
+
+    assert set(problem.get_branches_var('x')) == {sqrt(5) / 5, -sqrt(5) / 5}
+    assert set(problem.get_branches_var('y')) == {sqrt(5) / 5, -sqrt(5) / 5}
+    assert problem.get_branches_var('a') == [2, -2]
+    assert problem.get_branches_var('b') == [2, -2]
+    assert problem.get_branches_var('c') == [0]
 
 
 def test_incorrect_functions():
@@ -675,8 +745,6 @@ def test_incorrect_functions():
 #         assert False
 #
 #     inherit.add_var('z', 'z description')
-#
-#     print(inherit.vars())
 #
 #     assert inherit.vars() == {'x': symbols('x'), 'y': symbols('y'), 'z': symbols('z')}
 #     assert inherit.solved_vars() == {}
@@ -750,7 +818,6 @@ def test_silicon():
 
 
 def test_kinematic():
-    # noinspection PyUnresolvedReferences
     class Kinematic(PyEquations):
 
         def __init__(self):
@@ -780,47 +847,140 @@ def test_kinematic():
 
     k = Kinematic()
 
-    k.x_0 = 0 * meter
-    k.v_0 = -3 * meter / second
-    k.a = 9.8 * meter / second ** 2
-    k.t = 10 * second
+    k.x_0 = 100 * meter
+    k.v_0 = 3 * meter / second
+    k.a = -9.8 * meter / second ** 2
+    k.t = 2 * second
 
     k.solve()
 
     # Calculated values are correct
-    assert k.x_f == 460.0 * meter
-    assert k.v_f == 95.0 * meter / second
+    assert within_tolerance(k.x_f, 86.4 * meter)
+    assert within_tolerance(k.v_f, -16.6 * meter / second)
 
     # Original values are maintained
-    assert k.x_0 == 0 * meter
-    assert k.v_0 == -3 * meter / second
-    assert k.a == 9.8 * meter / second ** 2
-    assert k.t == 10 * second
+    assert k.x_0 == 100 * meter
+    assert k.v_0 == 3 * meter / second
+    assert k.a == -9.8 * meter / second ** 2
+    assert k.t == 2 * second
 
-    # Clear th initial position and velocity
-    k.clear_var('x_0', 'v_0')
+    # Clear the inital position and time
+    k.clear_var('x_0', 't')
 
-    # Check that the initial position and velocity are cleared
+    # Check that the initial position and time are cleared
     assert k.x_0 == symbols('x_0')
-    assert k.v_0 == symbols('v_0')
-
-    # Re-solve the equations
-    k.solve()
-
-    # Check that the calculated values are correct
-    assert k.x_0 == 0 * meter
-    assert k.v_0 == -3.0 * meter / second
-
-    # Clear the time and initial velocity
-    k.clear_var('t', 'v_0')
-
-    # Check that the time and initial velocity are cleared
     assert k.t == symbols('t')
-    assert k.v_0 == symbols('v_0')
 
     # Re-solve the equations
     k.solve()
 
-    # Check that the calculated values are correct
-    assert k.t == 10.0 * second
-    assert k.v_0 == -3.0 * meter / second
+    # Calculated values are correct
+    assert within_tolerance(k.x_0, 100.0 * meter)
+    assert within_tolerance(k.t, 2.0 * second)
+
+    # Original values are maintained
+    assert within_tolerance(k.x_f, 86.4 * meter)
+    assert within_tolerance(k.v_f, -16.6 * meter / second)
+    assert within_tolerance(k.v_0, 3.0 * meter / second)
+    assert within_tolerance(k.a, -9.8 * meter / second ** 2)
+
+    # Clear the initial velocity and time
+    k.clear_var('v_0', 't')
+
+    # Check that the initial velocity and time are cleared
+    assert k.v_0 == symbols('v_0')
+    assert k.t == symbols('t')
+
+    # Re-solve the equations
+    k.solve()
+
+    # Check that there are two solution branches
+    assert k.num_branches() == 2
+
+    print(k.get_branches_var('v_0'))
+
+    assert set(k.get_branches_var('v_0')) == {3.0 * meter / second, -3.0 * meter / second}
+    assert set(k.get_branches_var('t')) == {2.0 * second, 68/49 * second}
+
+
+def test_kinematic_parse():
+
+    class Kinematic(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+            self.add_var('x_0', 'Initial position')
+            self.add_var('x_f', 'Final position')
+            self.add_var('v_0', 'Initial velocity')
+            self.add_var('v_f', 'Final velocity')
+            self.add_var('a', 'Acceleration')
+            self.add_var('t', 'Time')
+
+        @eq
+        def calc_v_f(self):
+            return self.v_f, self.v_0 + self.a * self.t
+
+        @eq
+        def calc_x_f(self):
+            return self.x_f, self.x_0 + self.v_0 * self.t + 0.5 * self.a * self.t ** 2
+
+        @eq
+        def calc_v_f2(self):
+            return self.v_f ** 2, self.v_0 ** 2 + 2 * self.a * (self.x_f - self.x_0)
+
+        @eq
+        def calc_x_f2(self):
+            return self.x_f, self.x_0 + 0.5 * (self.v_0 + self.v_f) * self.t
+
+        @func
+        def parse(self):
+            if self.v_0 < 0:
+                self.del_branch()
+
+    # Identical equations as before, just with arbitrary parse function
+    # Would be better applied with negative time, but this matches previous test
+    k = Kinematic()
+
+    k.x_0 = 100 * meter
+    k.v_0 = 3 * meter / second
+    k.a = -9.8 * meter / second ** 2
+    k.t = 2 * second
+
+    k.solve()
+
+    # Calculated values are correct
+    assert within_tolerance(k.x_f, 86.4 * meter)
+    assert within_tolerance(k.v_f, -16.6 * meter / second)
+
+    # Original values are maintained
+    assert k.x_0 == 100 * meter
+    assert k.v_0 == 3 * meter / second
+    assert k.a == -9.8 * meter / second ** 2
+    assert k.t == 2 * second
+
+    # Clear the initial velocity and time
+    k.clear_var('v_0', 't')
+
+    # Check that the initial velocity and time are cleared
+    assert k.v_0 == symbols('v_0')
+    assert k.t == symbols('t')
+
+    # Re-solve the equations
+    k.solve()
+
+    # Check that there are two solution branches
+    assert k.num_branches() == 1
+
+    assert set(k.get_branches_var('v_0')) == {3.0 * meter / second}
+    assert set(k.get_branches_var('t')) == {2.0 * second}
+
+
+# TODO test more with units
+
+# TODO test get_var_vals
+
+# TODO test one branch fails
+
+# TODO test change propagates
+
+# TODO not how we won't remove final branch
