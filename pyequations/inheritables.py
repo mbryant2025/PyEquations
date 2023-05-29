@@ -1,6 +1,12 @@
 from itertools import combinations
-from sympy import symbols, Symbol, solve, Eq, Number
-from copy import deepcopy
+from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number
+from sympy.physics.units import Quantity
+from copy import copy
+
+
+# Internal flags
+evaluating_funcs = False
+units_enabled = True
 
 
 def _get_symbols(equations: [Eq]) -> tuple:
@@ -24,20 +30,41 @@ def _is_solved(var) -> bool:
     return not isinstance(var, Symbol)
 
 
+def remove_units(expr: Symbol | Number) -> Symbol | Number:
+    """
+    Remove the units from a given expression
+    :param expr: An expression
+    :return: The expression with the units removed
+    """
+    if expr is None:
+        return None
+    if isinstance(expr, (int, float)):
+        return expr
+    if not expr.has(Quantity):
+        return expr
+    units = expr.subs({x: 1 for x in expr.args if not x.has(Quantity)})
+    return expr / units
+
+
 class PyEquations:
 
     def __init__(self):
+
+        # Text-base descriptions inputted by user (optional to have one, empty string by default)
         self.variable_descriptions = {}
         # Sympy expressions to solve for
         self.eqs = []
         # User defined functions
         self.funcs = []
         # Branches for multiple solutions
-        self.children_branches = {self}
+        self.branches = {self}
         # Parent branch
-        self.parent_link = None
+        # self.parent_link = None
         # Root branch
         self.root_link = self
+        # Flag for if the class is evaluating functions
+        # If this is the case, the class will run .evalf on all sympy expressions
+        self.evaluating_funcs = None
 
         # Get all methods defined in the class
         methods = [getattr(self, name) for name in dir(self) if callable(getattr(self, name))]
@@ -68,24 +95,24 @@ class PyEquations:
 
         # If the attribute does not exist and the value is a sympy symbol, add it to the class for all branches
         if not hasattr(self, name) and isinstance(value, Symbol):
-            for branch in self.children_branches:
+            for branch in self.branches:
                 branch._super_setattr(name, value)
 
         # If the attribute exists and the value is a number, substitute the value into the sympy symbol for all branches
-        elif hasattr(self, name) and isinstance(value, (int, float, complex)):
-            for branch in self.children_branches:
+        elif hasattr(self, name) and isinstance(value, (int, float, complex)) and not isinstance(value, bool):
+            for branch in self.branches:
                 branch._super_setattr(name, getattr(self, name).subs(getattr(self, name), value))
 
         # Otherwise, if the value is a sympy symbol or a number, throw an exception as it was used incorrectly
         elif isinstance(value, Symbol):
             raise RuntimeError(f'Variable {name} already exists')
 
-        elif isinstance(value, (int, float, complex)):
+        elif isinstance(value, (int, float, complex)) and not isinstance(value, bool):
             raise Exception(f'Variable {name} does not exist and cannot be set to a number')
 
         # If the added attribute is a function, add it to all branches
         elif callable(value):
-            for branch in self.children_branches:
+            for branch in self.branches:
                 branch._super_setattr(name, value)
 
         # Otherwise, use the default __setattr__ method for this branch
@@ -107,24 +134,68 @@ class PyEquations:
         :return: None
         """
 
-        for branch in self.children_branches:
+        for branch in self.root_link.branches:
             branch._super_delattr(item)
+
+    def __getattribute__(self, item):
+
+        i = super().__getattribute__(item)
+
+        if isinstance(i, (Mul, Add, Pow, Symbol, Number, Symbol, Number)):
+            # Simplify the expression
+            ret = simplify(i)
+            # If the class is evaluating functions, evaluate the expression
+            if evaluating_funcs:
+                ret = ret.evalf()
+            if not units_enabled:
+                ret = remove_units(ret)
+            return ret
+        return i
 
     def _eval_funcs(self) -> None:
         """
-        Evaluate all the user defined functions
+        Evaluate all the user defined functions for this branch
         :return: None
         """
 
+        global evaluating_funcs, units_enabled
+
+        evaluating_funcs = True
+
         # Loop through all the user-defined functions and evaluate them
         for f in self.funcs:
+            units_enabled = True
+
             try:
-                # Evaluate the function
                 f()
-            except Exception:
-                # If the function raises an exception, skip it
-                # Ideally, it would have a custom exception that is caught and handled
+            except TypeError as e:
+                print(str(e))
                 continue
+
+
+            # try:
+            #     # Evaluate the function
+            #     f()
+            # except TypeError as e:
+            #     # If there is a type error with message 'cannot determine truth value of Relational', disable units
+            #     # Doing so will allow comparisons with units
+            #     # However, the same exception is also raised when comparing a variable with a number
+            #     # So, if another exception is raised, continue
+            #     if str(e) == 'cannot determine truth value of Relational':
+            #         units_enabled = False
+            #         try:
+            #             f()
+            #         except Exception:
+            #             continue
+            #     else:
+            #         continue
+            # except Exception:
+            #     # If the function raises an exception, skip it
+            #     # Ideally, it would have a custom exception that is caught and handled
+            #     continue
+
+        evaluating_funcs = False
+        units_enabled = True
 
     def _verify_and_extract_solution(self, solution, target_variables) -> dict | None:
         """
@@ -176,14 +247,19 @@ class PyEquations:
                     # Want to make an exact copy of the current PyEquations object data, except for the parent indicator
                     # For each solution, create a new branch and propagate this new branch to the root
 
-                    # Create a new solution branch
-                    new_branch = deepcopy(self)
-                    new_branch.parent_link = self
+                    print(f'Branching solution {sol} for {symbol_names}')
 
-                    current_branch = new_branch
-                    while current_branch.parent_link is not None:
-                        current_branch.parent_link.children_branches.add(new_branch)
-                        current_branch = current_branch.parent_link
+                    # Create a new solution branch
+                    new_branch = copy(self)
+                    # new_branch.parent_link = self
+                    # new_branch.root_link = self.root_link
+
+                    self.root_link.branches.add(new_branch)
+
+                    # current_branch = new_branch
+                    # while current_branch.parent_link is not None:
+                    #     current_branch.parent_link.children_branches.add(new_branch)
+                    #     current_branch = current_branch.parent_link
 
                     # Add the solution to the new branch
                     for v, s in zip(symbol_names, sol):
@@ -191,6 +267,8 @@ class PyEquations:
 
                     # Continue solving the new branch with this sol
                     new_branch.solve()
+
+                print(f'NOW WE HAVE {len(self.root_link.branches)} BRANCHES')
 
                 # Return the first solution
                 # Create a dictionary to map the target variables to the solution
@@ -233,9 +311,13 @@ class PyEquations:
                     tolerance = 0.0001
                     if abs(result[0] - result[1]) <= tolerance * result[0]:
                         continue
+                    # If one is zero and the other is within tolerance % of zero, continue
+                    elif (result[0] == 0 and remove_units(abs(result[1])) <= tolerance) or\
+                            (result[1] == 0 and remove_units(abs(result[0])) <= tolerance):
+                        continue
                     else:
                         # If there are more than one branches, kill this one
-                        if len(self.root_link.children_branches) > 1:
+                        if len(self.root_link.branches) > 1:
                             self.del_branch()
                         else:
                             raise RuntimeError(f'Equation is False: {resulting_eq}')
@@ -244,7 +326,9 @@ class PyEquations:
             else:
                 raise ValueError("Function does not return two elements")
 
-        return equations
+        # This is the major bottleneck in the code
+        # However, it is necessary  to ensure that comparing them does not yield false inequalities
+        return [simplify(e) for e in equations]
 
     def _run_solver_this_branch(self) -> None:
         """
@@ -253,26 +337,28 @@ class PyEquations:
         :return: None
         """
 
-        # TODO call solve for all branches
-
         # Evaluate all the user defined functions
         self._eval_funcs()
 
         # Gather all the equations from the calculation functions that have an unknown variable
-        equations = self._retrieve_equations()
+        # Remove any equations that are True as they are redundant
+        equations = [e for e in self._retrieve_equations() if e != True]
+
+        print('here are the equations')
+
+        print(self._retrieve_equations())
 
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
             for subgroup in combinations(equations, r):
 
-                # If any of the equations are True, we can ignore the subgroup
-                if any([e == True for e in subgroup]):
-                    continue
-
                 target_variables = _get_symbols(subgroup)
 
                 # Attempt to solve the subgroup of equations
                 solution = solve(subgroup, *target_variables)
+
+                print('here is the subgroup')
+                print(subgroup)
 
                 # If solution == [], there is no solution for this subgroup, raise an exception
                 if not solution:
@@ -286,6 +372,8 @@ class PyEquations:
                     for key, value in sol.items():
                         # Found a solution, set the variable to the solution
                         setattr(self, str(key), value)
+
+                    print(f'those branches are {self.vars(decimal=True)}')
 
                     # If there are still unknown variables, attempt to solve again with the new information
                     self.solve()
@@ -304,7 +392,7 @@ class PyEquations:
 
         # List comprehension to run the solver on current branches and not have concurrent modification issues
         # Could use multiprocessing here, but would require to serialize the PyEquations object
-        for branch in [b for b in self.root_link.children_branches]:
+        for branch in [b for b in self.root_link.branches]:
             branch._run_solver_this_branch()
 
     def add_var(self, name: str, description: str = '') -> None:
@@ -401,7 +489,7 @@ class PyEquations:
         """
 
         # Return the value of the variable
-        return list(set([branch._get_this_branch_var(name) for branch in self.children_branches]))
+        return list(set([branch._get_this_branch_var(name) for branch in self.root_link.branches]))
 
     def _get_this_branch_vars(self):
         """
@@ -412,14 +500,20 @@ class PyEquations:
         # Return a dictionary of all variables in the branch
         return {name: getattr(self, name) for name in sorted(self.variable_descriptions.keys())}
 
-    def vars(self) -> list[dict[str, Symbol | Number]]:
+    def vars(self, decimal=False) -> list[dict[str, Symbol | Number]]:
         """
         Get all variables among all solution branches
         :return: A list of dictionaries of all variables for each solution branch
         """
 
         # Return a list of all variables for each solution branch
-        return [branch._get_this_branch_vars() for branch in self.children_branches]
+        ret = [branch._get_this_branch_vars() for branch in self.root_link.branches]
+
+        if not decimal:
+            return ret
+
+        # Option for returning decimal values
+        return [{key: value.evalf() for key, value in branch.items()} for branch in ret]
 
     def num_branches(self) -> int:
         """
@@ -428,7 +522,7 @@ class PyEquations:
         """
 
         # Return the number of solution branches
-        return len(self.children_branches)
+        return len(self.root_link.branches)
 
     def var_descriptions(self) -> dict[str: str]:
         """
@@ -455,34 +549,78 @@ class PyEquations:
         :return: None
         """
 
+        print('deleting branch')
+        print(f'we have {len(self.root_link.branches)} branches')
+
         # Return if only one branch (children includes self)
         # Return rather than raise exception because this is called potentially many times
-        if len(self.root_link.children_branches) == 1:
+        if len(self.root_link.branches) == 1:
             return
+
+        # If the target branch is the root branch, we need to switch all the data between the target branch and another
+        # This also means we need to modify the children of the branches and the parent links
+        if self is self.root_link:
+            print('I AM ROOT')
+        else:
+            print('I AM NOT ROOT')
+
+        return
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # If the target branch is the root branch, reassign the root branch for all branches
         if self is self.root_link:
             # Since we know that there is at least 2 branches, reassign the root link
             new_root = None
 
-            for b in self.root_link.children_branches:
+            for b in self.root_link.branches:
                 if b is not None:
                     new_root = b
                     break
 
+            for b in self.root_link.branches:
+                # For the branches that had the old root as their parent, reassign to the new one
+                if b.parent_link is self.root_link:
+                    b.parent_link = new_root
+                # Need to ensure that the new_root has the correct children_branches by adding all from old root
+                new_root.children_branches.add(b)
+
+
             # List comprehension to get all branches (copy)
-            all_branches = [b for b in self.root_link.children_branches]
+            all_branches = [b for b in self.root_link.branches]
 
             # For all branches, reassign root
             for branch in all_branches:
                 branch.root_link = new_root
-                branch.children_branches.add(self)
+                branch.branches.add(self)
 
-        all_branches = [b for b in self.root_link.children_branches]
+        all_branches = [b for b in self.root_link.branches]
 
         for branch in all_branches:
-            if self in branch.children_branches:
-                branch.children_branches.remove(self)
+            if self in branch.branches:
+                branch.branches.remove(self)
 
         del self
 

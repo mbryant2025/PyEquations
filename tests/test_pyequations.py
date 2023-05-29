@@ -1,14 +1,16 @@
 from sympy import symbols, Eq, sqrt, I
 from sympy.physics.units import cm, meter, second
 from pyequations import __version__
-from pyequations.inheritables import _get_symbols, PyEquations
+from pyequations.inheritables import _get_symbols, PyEquations, remove_units
 from pyequations.utils import solved
 from pyequations.decorators import eq, func
 from pytest import raises
 
 
 def within_tolerance(expected, actual, percent=0.001):
-    return abs(expected - actual) <= abs(expected * percent / 100)
+    tolerance = abs(expected * percent / 100)
+    diff = abs(expected - actual)
+    return bool(diff <= tolerance)
 
 
 def assert_dicts_equal(expected, actual):
@@ -638,6 +640,32 @@ def test_del_branch():
     assert problem.num_branches() == 1
 
 
+def test_del_branch_2():
+    class Problem(PyEquations):
+
+        def __init__(self):
+            super().__init__()
+
+            self.add_var('x')
+
+        @eq
+        def eq1(self):
+            return self.x ** 2, 4
+
+        @func
+        def constraint(self):
+            if self.x > 0:
+                self.del_branch()
+
+    # Check for func that deletes branch if a condition is met (for a branch that is initially root)
+
+    problem = Problem()
+
+    problem.solve()
+
+    assert problem.num_branches() == 1
+
+
 def test_get_branches_var():
     class Problem(PyEquations):
 
@@ -1252,3 +1280,109 @@ def test_complicated_solution_set_units():
                  'z': 8 * sqrt(7) * sqrt(meter) / 21}]
 
     assert_dicts_equal(expected, inherit.vars())
+
+
+def test_kinematics_3():
+    class Kinematic(PyEquations):
+
+        # Define our variables with optional descriptions
+        def __init__(self):
+            super().__init__()
+            self.add_var('x_0', 'Initial position')
+            self.add_var('x_f', 'Final position')
+            self.add_var('v_0', 'Initial velocity')
+            self.add_var('v_f', 'Final velocity')
+            self.add_var('a', 'Acceleration')
+            self.add_var('t', 'Time')
+
+        # Define our equations by noting them with the eq decorator
+        # An '=' sign is replaced with a ',' thereby returning a tuple
+        @eq
+        def calc_v_f(self):
+            return self.v_f, self.v_0 + self.a * self.t
+
+        @eq
+        def calc_x_f(self):
+            return self.x_f, self.x_0 + self.v_0 * self.t + 0.5 * self.a * self.t ** 2
+
+        @eq
+        def calc_v_f2(self):
+            return self.v_f ** 2, self.v_0 ** 2 + 2 * self.a * (self.x_f - self.x_0)
+
+        @eq
+        def calc_x_f2(self):
+            return self.x_f, self.x_0 + 0.5 * (self.v_0 + self.v_f) * self.t
+
+    k = Kinematic()
+
+    k.x_0 = 100 * meter
+    k.v_0 = 3 * meter / second
+    k.a = -10 * meter / second ** 2
+    k.x_f = 0 * meter
+
+    k.solve()
+
+    print(k.vars())
+
+    expected = [{'a': -10*meter/second**2, 't': -7*sqrt(41)*second/10 + 3*second/10, 'v_0': 3*meter/second,
+                 'v_f': 7*sqrt(41)*meter/second, 'x_0': 100*meter, 'x_f': 0},
+                {'a': -10*meter/second**2, 't': 3*second/10 + 7*sqrt(41)*second/10,
+                 'v_0': 3*meter/second, 'v_f': -7*sqrt(41)*meter/second, 'x_0': 100*meter, 'x_f': 0}]
+
+    assert_dicts_equal(expected, k.vars())
+
+
+def test_vars_decimal():
+    class Kinematic(PyEquations):
+
+        # Define our variables with optional descriptions
+        def __init__(self):
+            super().__init__()
+            self.add_var('x_0', 'Initial position')
+            self.add_var('x_f', 'Final position')
+            self.add_var('v_0', 'Initial velocity')
+            self.add_var('v_f', 'Final velocity')
+            self.add_var('a', 'Acceleration')
+            self.add_var('t', 'Time')
+
+        # Define our equations by noting them with the eq decorator
+        # An '=' sign is replaced with a ',' thereby returning a tuple
+        @eq
+        def calc_v_f(self):
+            return self.v_f, self.v_0 + self.a * self.t
+
+        @eq
+        def calc_x_f(self):
+            return self.x_f, self.x_0 + self.v_0 * self.t + 0.5 * self.a * self.t ** 2
+
+        @eq
+        def calc_v_f2(self):
+            return self.v_f ** 2, self.v_0 ** 2 + 2 * self.a * (self.x_f - self.x_0)
+
+        @eq
+        def calc_x_f2(self):
+            return self.x_f, self.x_0 + 0.5 * (self.v_0 + self.v_f) * self.t
+
+    k = Kinematic()
+
+    k.x_0 = 100 * meter
+    k.v_0 = 3 * meter / second
+    k.a = -10 * meter / second ** 2
+    k.x_f = 0 * meter
+
+    k.solve()
+
+    expected = [{'a': -10*meter/second**2, 't': -7*sqrt(41)*second/10 + 3*second/10, 'v_0': 3*meter/second,
+                 'v_f': 7*sqrt(41)*meter/second, 'x_0': 100*meter, 'x_f': 0},
+                {'a': -10*meter/second**2, 't': 3*second/10 + 7*sqrt(41)*second/10,
+                 'v_0': 3*meter/second, 'v_f': -7*sqrt(41)*meter/second, 'x_0': 100*meter, 'x_f': 0}]
+
+    assert_dicts_equal(expected, k.vars())
+
+    decimals = k.vars(decimal=True)
+
+    # Test that t is a decimal number
+    val = remove_units(decimals[0]['t'])
+
+    # Assert that val is within tolerance of the expected values
+    assert within_tolerance(val, 4.78218696620299) or within_tolerance(val, -4.18218696620299)
