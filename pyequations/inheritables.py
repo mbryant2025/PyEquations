@@ -40,25 +40,50 @@ def remove_units(expr: Symbol | Number) -> Symbol | Number:
     return expr / units
 
 
+class ContextStack:
+    """
+    A class to manage the context stack for branching systems
+    """
+
+    def __init__(self):
+        self.contexts: list[dict] = []
+        self._context_idx: int = 0
+
+    @property
+    def context_idx(self):
+        return self._context_idx
+
+    @context_idx.setter
+    def context_idx(self, value):
+        if 0 <= value < len(self.contexts):
+            self._context_idx = value
+        else:
+            raise IndexError("Invalid context_idx")
+
+    def __getattr__(self, key):
+        if 0 <= self._context_idx < len(self.contexts):
+            return self.contexts[self._context_idx].get(key)
+        else:
+            raise IndexError("Invalid context_idx")
+
+
+# TODO make __getattr__ in PyEquations that grabs the current context
+
+# make it see if it exists, if not then go to context stack
+
 class PyEquations:
 
     def __init__(self):
 
         # Text-base descriptions inputted by user (optional to have one, empty string by default)
-        self.variable_descriptions = {}
+        self.variable_descriptions: dict[str, str] = {}
         # Sympy expressions to solve for
-        self.eqs = []
+        self.eqs: list[callable] = []
         # User defined functions
-        self.funcs = []
+        self.funcs: list[callable] = []
         # Branches for multiple solutions
-        self.branches = {self}
-        # New branches, used internally
-        self.new_branches = []
-        # Root branch
-        self.root_link = self
-        # Flag for if the class is evaluating functions
-        # If this is the case, the class will run .evalf on all sympy expressions
-        self.evaluating_funcs = None
+        # Current branch is the first branch
+        self.context_stack: list[dict] = []
 
         # Get all methods defined in the class
         methods = [getattr(self, name) for name in dir(self) if callable(getattr(self, name))]
@@ -89,8 +114,8 @@ class PyEquations:
 
         # If the attribute does not exist and the value is a sympy symbol, add it to the class for all branches
         if not hasattr(self, name) and isinstance(value, Symbol):
-            for branch in self.branches:
-                branch._super_setattr(name, value)
+            for branch in self.context_stack:
+                branch[name] = value
 
         # If the attribute exists and the value is a number, substitute the value into the sympy symbol for all branches
         elif hasattr(self, name) and isinstance(value, (int, float, complex)) and not isinstance(value, bool):
@@ -137,13 +162,8 @@ class PyEquations:
         :return: None
         """
 
-        global evaluating_funcs, units_enabled
-
-        evaluating_funcs = True
-
         # Loop through all the user-defined functions and evaluate them
         for f in self.funcs:
-            units_enabled = True
 
             try:
                 f()
@@ -151,30 +171,37 @@ class PyEquations:
                 print(str(e))
                 continue
 
+    def context_switch(self, target_branch: int) -> None:
+        """
+        Switch the current branch to the specified branch
+        :param target_branch: The branch number to switch to
+        :return: None
+        """
 
-            # try:
-            #     # Evaluate the function
-            #     f()
-            # except TypeError as e:
-            #     # If there is a type error with message 'cannot determine truth value of Relational', disable units
-            #     # Doing so will allow comparisons with units
-            #     # However, the same exception is also raised when comparing a variable with a number
-            #     # So, if another exception is raised, continue
-            #     if str(e) == 'cannot determine truth value of Relational':
-            #         units_enabled = False
-            #         try:
-            #             f()
-            #         except Exception:
-            #             continue
-            #     else:
-            #         continue
-            # except Exception:
-            #     # If the function raises an exception, skip it
-            #     # Ideally, it would have a custom exception that is caught and handled
-            #     continue
+        # If the branch number is out of range, throw an exception
+        if target_branch >= len(self.context_stack):
+            raise IndexError(f'Branch {target_branch} does not exist')
 
-        evaluating_funcs = False
-        units_enabled = True
+        # Otherwise, set the current branch to the specified branch by moving it to the front of the list
+        self.context_stack.insert(0, self.context_stack.pop(target_branch))
+
+
+    def rotate_context(self) -> None:
+        """
+        Rotate the current branch to the next branch
+        :return: None
+        """
+
+        # If there are no branches, throw an exception
+        if len(self.context_stack) == 0:
+            raise IndexError('No branches exist')
+
+        # Otherwise, move the current branch to the back of the list
+        self.context_stack.append(self.context_stack.pop(0))
+
+
+    # TODO get context by variable values
+
 
     def _verify_and_extract_solution(self, solution, target_variables) -> dict | None:
         """
