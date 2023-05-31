@@ -1,3 +1,6 @@
+import copy
+
+
 def eq(f: callable) -> callable:
     """
     Decorator to mark a function as a calculation function

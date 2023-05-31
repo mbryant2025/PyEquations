@@ -1,15 +1,9 @@
 from itertools import combinations
 from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number
 from sympy.physics.units import Quantity
-from copy import copy
 
 
-# Internal flags
-evaluating_funcs = False
-units_enabled = True
-
-
-def _get_symbols(equations: [Eq]) -> tuple:
+def get_symbols(equations: [Eq]) -> tuple:
     """
     Get all the symbols in an equation
     :param equations: The equations
@@ -58,8 +52,8 @@ class PyEquations:
         self.funcs = []
         # Branches for multiple solutions
         self.branches = {self}
-        # Parent branch
-        # self.parent_link = None
+        # New branches, used internally
+        self.new_branches = []
         # Root branch
         self.root_link = self
         # Flag for if the class is evaluating functions
@@ -136,21 +130,6 @@ class PyEquations:
 
         for branch in self.root_link.branches:
             branch._super_delattr(item)
-
-    def __getattribute__(self, item):
-
-        i = super().__getattribute__(item)
-
-        if isinstance(i, (Mul, Add, Pow, Symbol, Number, Symbol, Number)):
-            # Simplify the expression
-            ret = simplify(i)
-            # If the class is evaluating functions, evaluate the expression
-            if evaluating_funcs:
-                ret = ret.evalf()
-            if not units_enabled:
-                ret = remove_units(ret)
-            return ret
-        return i
 
     def _eval_funcs(self) -> None:
         """
@@ -244,31 +223,26 @@ class PyEquations:
 
                 # With the valid solutions, create a new solution branch for each solution after the first
                 for sol in valid_sols[1:]:
+                    print('BRANCHING')
                     # Want to make an exact copy of the current PyEquations object data, except for the parent indicator
                     # For each solution, create a new branch and propagate this new branch to the root
 
-                    print(f'Branching solution {sol} for {symbol_names}')
-
                     # Create a new solution branch
                     new_branch = copy(self)
-                    # new_branch.parent_link = self
-                    # new_branch.root_link = self.root_link
 
+                    # Need to deepcopy the eqs and funcs
+                    new_branch.eqs = deepcopy(self.eqs)
+                    new_branch.funcs = deepcopy(self.funcs)
+
+                    # Add a new branch to the root
                     self.root_link.branches.add(new_branch)
-
-                    # current_branch = new_branch
-                    # while current_branch.parent_link is not None:
-                    #     current_branch.parent_link.children_branches.add(new_branch)
-                    #     current_branch = current_branch.parent_link
 
                     # Add the solution to the new branch
                     for v, s in zip(symbol_names, sol):
                         new_branch.__setattr__(v, s)
 
-                    # Continue solving the new branch with this sol
-                    new_branch.solve()
-
-                print(f'NOW WE HAVE {len(self.root_link.branches)} BRANCHES')
+                    # Add this new branch to the queue of new branches to solve
+                    self.root_link.new_branches.append(new_branch)
 
                 # Return the first solution
                 # Create a dictionary to map the target variables to the solution
@@ -301,28 +275,16 @@ class PyEquations:
 
         equations = []
 
+        print(f'CALLING FROM {self}')
+        print(f'here are the equations {self.eqs}')
+
         for function in self.eqs:
+
+            # Call the function from the context of the branch
             result = function()
             if len(result) == 2:
                 resulting_eq = Eq(*result)
-                if resulting_eq == False:
-                    # If the equation is False, double check for floating point errors by seeing if
-                    # either element in result is within tolerance % of the other
-                    tolerance = 0.0001
-                    if abs(result[0] - result[1]) <= tolerance * result[0]:
-                        continue
-                    # If one is zero and the other is within tolerance % of zero, continue
-                    elif (result[0] == 0 and remove_units(abs(result[1])) <= tolerance) or\
-                            (result[1] == 0 and remove_units(abs(result[0])) <= tolerance):
-                        continue
-                    else:
-                        # If there are more than one branches, kill this one
-                        if len(self.root_link.branches) > 1:
-                            self.del_branch()
-                        else:
-                            raise RuntimeError(f'Equation is False: {resulting_eq}')
-                else:
-                    equations.append(resulting_eq)
+                equations.append(resulting_eq)
             else:
                 raise ValueError("Function does not return two elements")
 
@@ -340,11 +302,15 @@ class PyEquations:
         # Evaluate all the user defined functions
         self._eval_funcs()
 
+        print(f'self is {self}')
+
         # Gather all the equations from the calculation functions that have an unknown variable
         # Remove any equations that are True as they are redundant
         equations = [e for e in self._retrieve_equations() if e != True]
 
-        print('here are the equations')
+        print(f'running solver for a BRANCH {self}')
+
+        print(f'our value of x is {self.x} and our value of y is {self.y} and self is {self}')
 
         print(self._retrieve_equations())
 
@@ -352,12 +318,11 @@ class PyEquations:
         for r in range(1, len(equations) + 1):
             for subgroup in combinations(equations, r):
 
-                target_variables = _get_symbols(subgroup)
+                target_variables = get_symbols(subgroup)
 
                 # Attempt to solve the subgroup of equations
                 solution = solve(subgroup, *target_variables)
 
-                print('here is the subgroup')
                 print(subgroup)
 
                 # If solution == [], there is no solution for this subgroup, raise an exception
@@ -373,10 +338,8 @@ class PyEquations:
                         # Found a solution, set the variable to the solution
                         setattr(self, str(key), value)
 
-                    print(f'those branches are {self.vars(decimal=True)}')
-
                     # If there are still unknown variables, attempt to solve again with the new information
-                    self.solve()
+                    self._run_solver_this_branch()
 
                     # Return to prevent further solving (want to utilize the most information possible)
                     return
@@ -393,6 +356,21 @@ class PyEquations:
         # List comprehension to run the solver on current branches and not have concurrent modification issues
         # Could use multiprocessing here, but would require to serialize the PyEquations object
         for branch in [b for b in self.root_link.branches]:
+            branch._run_solver_this_branch()
+
+        print('AFTER SOLVING EXISTING')
+
+        print(self.vars(decimal=True))
+
+        while len(self.root_link.new_branches) > 0:
+            print()
+            print('popping')
+            # Get the first branch in the queue
+            branch = self.new_branches.pop(0)
+
+            print(f'branch y is {branch.y}')
+
+            # Run the solver on the branch
             branch._run_solver_this_branch()
 
     def add_var(self, name: str, description: str = '') -> None:
@@ -442,7 +420,6 @@ class PyEquations:
 
     def clear_var(self, *variables) -> None:
         """
-        Returns variables to variables
         Used for changing values back to variables
         :param variables: The names of the variables
         :return: None
@@ -590,39 +567,39 @@ class PyEquations:
 
 
 
-        # If the target branch is the root branch, reassign the root branch for all branches
-        if self is self.root_link:
-            # Since we know that there is at least 2 branches, reassign the root link
-            new_root = None
-
-            for b in self.root_link.branches:
-                if b is not None:
-                    new_root = b
-                    break
-
-            for b in self.root_link.branches:
-                # For the branches that had the old root as their parent, reassign to the new one
-                if b.parent_link is self.root_link:
-                    b.parent_link = new_root
-                # Need to ensure that the new_root has the correct children_branches by adding all from old root
-                new_root.children_branches.add(b)
-
-
-            # List comprehension to get all branches (copy)
-            all_branches = [b for b in self.root_link.branches]
-
-            # For all branches, reassign root
-            for branch in all_branches:
-                branch.root_link = new_root
-                branch.branches.add(self)
-
-        all_branches = [b for b in self.root_link.branches]
-
-        for branch in all_branches:
-            if self in branch.branches:
-                branch.branches.remove(self)
-
-        del self
+        # # If the target branch is the root branch, reassign the root branch for all branches
+        # if self is self.root_link:
+        #     # Since we know that there is at least 2 branches, reassign the root link
+        #     new_root = None
+        #
+        #     for b in self.root_link.branches:
+        #         if b is not None:
+        #             new_root = b
+        #             break
+        #
+        #     for b in self.root_link.branches:
+        #         # For the branches that had the old root as their parent, reassign to the new one
+        #         if b.parent_link is self.root_link:
+        #             b.parent_link = new_root
+        #         # Need to ensure that the new_root has the correct children_branches by adding all from old root
+        #         new_root.children_branches.add(b)
+        #
+        #
+        #     # List comprehension to get all branches (copy)
+        #     all_branches = [b for b in self.root_link.branches]
+        #
+        #     # For all branches, reassign root
+        #     for branch in all_branches:
+        #         branch.root_link = new_root
+        #         branch.branches.add(self)
+        #
+        # all_branches = [b for b in self.root_link.branches]
+        #
+        # for branch in all_branches:
+        #     if self in branch.branches:
+        #         branch.branches.remove(self)
+        #
+        # del self
 
 
 # TODO update dependencies

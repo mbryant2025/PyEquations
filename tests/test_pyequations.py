@@ -1,7 +1,7 @@
 from sympy import symbols, Eq, sqrt, I
 from sympy.physics.units import cm, meter, second
 from pyequations import __version__
-from pyequations.inheritables import _get_symbols, PyEquations, remove_units
+from pyequations.inheritables import get_symbols, PyEquations, remove_units
 from pyequations.utils import solved
 from pyequations.decorators import eq, func
 from pytest import raises
@@ -34,14 +34,14 @@ def test_get_symbols():
         Eq(z, 1e5 * x * cm + y * cm)
     ]
 
-    assert set(_get_symbols(eqs)) == {w, x, y, z}
+    assert set(get_symbols(eqs)) == {w, x, y, z}
 
     # Test with just variable = number
     eqs = [
         Eq(x, 1),
     ]
 
-    assert set(_get_symbols(eqs)) == {x}
+    assert set(get_symbols(eqs)) == {x}
 
 
 def test_inherit_basic():
