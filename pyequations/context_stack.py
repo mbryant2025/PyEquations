@@ -49,14 +49,18 @@ class ContextStack:
         else:
             raise IndexError("Invalid context_idx")
 
-    def set_value(self, name, value, context: int = None) -> None:
+    def set_value(self, name: str, value, context: int = None) -> None:
         """
         Sets the value of a variable in the given context
         :param name: the name of the variable
         :param value: the value to set the variable to
-        :param context: the index of the context to set the value in
+        :param context: the index of the context to set the value in. If None, the current context is used
         :return: None
         """
+
+        # If name is not a string, raise an error
+        if not isinstance(name, str):
+            raise TypeError('Name must be a string')
 
         if context is not None:
             self._context_idx = context
@@ -64,7 +68,7 @@ class ContextStack:
         if 0 <= self._context_idx < len(self._contexts):
             self._contexts[self._context_idx][name] = value
         else:
-            raise IndexError("Invalid context_idx")
+            raise IndexError('Invalid context_idx')
 
     def get_value(self, name, context: int = None):
         """
@@ -82,7 +86,18 @@ class ContextStack:
         else:
             raise IndexError("Invalid context_idx")
 
-    def set_value_all_contexts(self, name, value) -> None:
+    def set_value_all_contexts(self, name: str, value) -> None:
+        """
+        Sets the value of a variable in all contexts
+        :param name:
+        :param value:
+        :return:
+        """
+
+        # If name is not a string, raise an error
+        if not isinstance(name, str):
+            raise TypeError('Name must be a string')
+
         for context in self._contexts:
             context[name] = value
 
@@ -104,6 +119,8 @@ class ContextStack:
         Removes a context from the stack
         """
         if 0 <= index < len(self._contexts):
+            # Need to ensure that the current context index is not greater than the index of the context to remove
+            self._context_idx = min(self._context_idx, index)
             self._contexts.pop(index)
         else:
             raise IndexError("Invalid context_idx")

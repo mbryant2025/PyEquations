@@ -1,6 +1,8 @@
 from itertools import combinations
 from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number
 from sympy.physics.units import Quantity
+from pyequations.context_stack import ContextStack
+from pyequations.__init__ import EPSILON
 
 
 def get_symbols(equations: [Eq]) -> tuple:
@@ -40,30 +42,54 @@ def remove_units(expr: Symbol | Number) -> Symbol | Number:
     return expr / units
 
 
-# TODO make __getattr__ in PyEquations that grabs the current context
+def composes_equation(lhs, rhs) -> bool:
+    """
+    Check if the two elements compose an equation
+    If there are no free symbols, it is not an equation
+    Otherwise, we check that the sides are 'close enough' to be considered equal
+    :param lhs: The left hand side of the equation
+    :param rhs: The right hand side of the equation
+    :return: True if the elements compose an equation, False otherwise
+    """
 
-# make it see if it exists, if not then go to context stack
+    # If either side contains free symbols, it is an equation
+    if len(get_symbols([lhs, rhs])) > 0:
+        return True
+
+    # Otherwise, check if the sides are 'close enough' to be considered equal
+    return abs(lhs - rhs) < EPSILON
+
 
 class PyEquations:
 
+    def _super_setattr(self, name, value):
+        """
+        Set the attribute for the class using the default __setattr__ method
+        :param name: the attribute name
+        :param value: the attribute value
+        :return: None
+        """
+        super(PyEquations, self).__setattr__(name, value)
+
     def __init__(self, var_descriptions: dict[str, str] | list[str]):
 
-        # Create context stack variable
-        self._context_stack = None
+        # Set attributes using super to avoid recursion
+        #  would spawn from the overriden __getattr__ method
+
         # Sympy expressions to solve for
-        self.eqs: list[callable] = []
+        self._super_setattr('eqs', [])
         # User defined functions
-        self.funcs: list[callable] = []
+        self._super_setattr('funcs', [])
 
         if var_descriptions:
             if isinstance(var_descriptions, dict):
-                self._context_stack = ContextStack(list(var_descriptions.keys()))
-                self.variable_descriptions = var_descriptions
+                self._super_setattr('context_stack', ContextStack(list(var_descriptions.keys())))
+                self._super_setattr('var_descriptions', var_descriptions)
             elif isinstance(var_descriptions, list):
-                self._context_stack = ContextStack(var_descriptions)
-                self.variable_descriptions = {name: "" for name in var_descriptions}
+                self._super_setattr('context_stack', ContextStack(var_descriptions))
+                self._super_setattr('var_descriptions', {name: '' for name in var_descriptions})
         else:
-            raise ValueError("Must have at least one variable description")
+            raise ValueError('Must have at least one variable description')
 
         # Get all methods defined in the class
         methods = [getattr(self, name) for name in dir(self) if callable(getattr(self, name))]
@@ -76,27 +102,37 @@ class PyEquations:
                 self.funcs.append(method)
 
     @property
-    def context_stack(self):
-        return self._context_stack
+    def num_branches(self) -> int:
+        """
+        Get the number of branches
+        :return: The number of branches
+        """
+
+        return self.context_stack.num_contexts
+
+    @property
+    def vars(self) -> list[dict[str, Symbol | Number]]:
+        """
+        Get the variables for all branches
+        :return: A list of dictionaries containing the variables for each branch
+        """
+
+        return self.context_stack.contexts
 
     def __getattr__(self, name):
         """
         Get the attribute for the current branch
+        This function is called when the attribute is not found, and therefore we should check the context stack
         :param name: the attribute name
         :return: the attribute value
         """
 
-        print(f'accessing {name}')
-        print(self._context_stack)
-
-    def _super_setattr(self, name, value):
-        """
-        Set the attribute for the class using the default __setattr__ method
-        :param name: the attribute name
-        :param value: the attribute value
-        :return: None
-        """
-        super().__setattr__(name, value)
+        # If the attribute is not in the context stack, raise an error
+        if name not in self.context_stack.variables:
+            raise AttributeError(f'Variable {name} does not exist')
+        else:
+            # Return the value of the attribute
+            return self.context_stack.get_value(name)
 
     def __setattr__(self, name, value):
         """
@@ -106,8 +142,9 @@ class PyEquations:
         :return: None
         """
 
-        # If the attribute does not exist and the value is an int, float, or complex, set the value for all branches
-        if not hasattr(self, name) and isinstance(value, int | float | complex):
+        # If the value is an int, float, or complex, set the value for all branches
+        # (Also include the sympy types)
+        if isinstance(value, int | float | complex | Mul | Add | Pow | Symbol | Number):
             # Check if the variables is in the context stack
             if name in self.context_stack.variables:
                 # If it is, set the value for all branches
@@ -118,24 +155,20 @@ class PyEquations:
 
         # Otherwise, use the default __setattr__ method for this branch
         else:
-            super().__setattr__(name, value)
-
-
+            self._super_setattr(name, value)
 
     def _eval_funcs(self) -> None:
         """
-        Evaluate all the user defined functions for this branch
+        Evaluate all the user defined functions for the current branch
         :return: None
         """
 
         # TODO
         # Loop through all the user-defined functions and evaluate them
         for f in self.funcs:
-
             try:
                 f()
-            except TypeError as e:
-                print(str(e))
+            except TypeError:
                 continue
 
     def context_switch(self, target_branch: int) -> None:
@@ -159,8 +192,6 @@ class PyEquations:
         """
 
         self.context_stack.rotate_context()
-
-    # TODO get context by variable values
 
     def _verify_and_extract_solution(self, solution, target_variables) -> dict | None:
         """
@@ -220,12 +251,10 @@ class PyEquations:
 
                     # Set the values for the new branch
                     for var, val in zip(target_variables, sol):
-                        self.context_stack.set_value(var, val)
+                        self.context_stack.set_value(str(var), val)
 
                     # Switch back to the old branch
                     self.context_switch(old_context_idx)
-
-                    # TODO solve these contexts too
 
                 # Return the first solution
                 # Create a dictionary to map the target variables to the solution
@@ -250,30 +279,32 @@ class PyEquations:
             # Unknown type, not a valid solution. Throw an exception
             raise RuntimeError(f'Unknown solution type {solution}')
 
-    def _retrieve_equations(self) -> list:
+    def _retrieve_equations(self) -> set:
         """
         Retrieve all the equations from the calculation functions
-        :return: A list of equations
+        :return: A set of equations
         """
 
-        equations = []
-
-        print(f'CALLING FROM {self}')
-        print(f'here are the equations {self.eqs}')
+        equations = set()
 
         for function in self.eqs:
 
             # Call the function from the context of the branch
             result = function()
             if len(result) == 2:
+                print('Result: ', result)
+                # Check if the result is an equation
+                # Also ensure that the equation is not trivially true
+                # if composes_equation(*result):
                 resulting_eq = Eq(*result)
-                equations.append(resulting_eq)
+                equations.add(resulting_eq)
             else:
-                raise ValueError("Function does not return two elements")
+                raise ValueError(f'Function does not return two elements {function}')
 
         # This is the major bottleneck in the code
         # However, it is necessary  to ensure that comparing them does not yield false inequalities
-        return [simplify(e) for e in equations]
+        # return {simplify(e) for e in equations}
+        return equations  # TODO reconsider if we need to simplify
 
     def _run_solver_this_branch(self) -> None:
         """
@@ -287,7 +318,11 @@ class PyEquations:
 
         # Gather all the equations from the calculation functions that have an unknown variable
         # Remove any equations that are True as they are redundant
-        equations = [e for e in self._retrieve_equations() if e != True]
+        equations = self._retrieve_equations()
+
+        equations = [e for e in equations if e != True]
+
+        print('Equations: ', equations)
 
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
@@ -299,17 +334,18 @@ class PyEquations:
                 solution = solve(subgroup, *target_variables)
 
                 # If solution == [], there is no solution for this subgroup, raise an exception
+                # TODO kill branch
                 if not solution:
                     raise RuntimeError(f'Equations have no solutions: {subgroup}')
 
-                # Verify the solution is valid, handle solution branching
+                # Verify the solution is valid; handle solution branching
                 sol = self._verify_and_extract_solution(solution, target_variables)
 
                 # If a solution was found, set the variables to the solution in this branch
                 if sol is not None:
                     for key, value in sol.items():
                         # Found a solution, set the variable to the solution
-                        self.context_stack.set_value(key, value)
+                        self.context_stack.set_value(str(key), value)
 
                     # If there are still unknown variables, attempt to solve again with the new information
                     self._run_solver_this_branch()
@@ -322,7 +358,8 @@ class PyEquations:
 
     def solve(self) -> None:
         """
-        Trigger to solve the equations on all existing branches
+        Trigger the solver on all existing branches
+        Solver could branch into additional branches, of which the solver will also be triggered on
         :return: None
         """
 
@@ -334,20 +371,19 @@ class PyEquations:
 
         # Rotate off the first context
         self._run_solver_this_branch()
-        self.context_stack.rotate_context_stack()
+        self.context_stack.rotate_context()
 
         # Wishing do-while loops were a thing in python...
 
         # Continue rotating until we are back at the first context
         while self.context_stack.context_idx != old_context_idx:
             self._run_solver_this_branch()
-            self.context_stack.rotate_context_stack()
+            self.context_stack.rotate_context()
 
     def _clear_single_var(self, name: str) -> None:
         """
         Returns a variable to a variable (potentially from a value)
-        Applies for all contexts
-        Used for changing a value back to a variable
+        Applies for a single context
         :param name: The name of the variable
         :return: None
         """
@@ -371,90 +407,95 @@ class PyEquations:
         for variable in variables:
             # Clear the variable
             self._clear_single_var(variable)
+#
+#     def get_var_description(self, name: str) -> str:
+#         """
+#         Get the description of a variable
+#         :param name: The name of the variable
+#         :return: The description of the variable
+#         """
+#
+#         # Raise an exception if the variable does not exist
+#         if not hasattr(self, name) and name not in self.variable_descriptions:
+#             raise KeyError(f'Variable {name} does not exist')
+#
+#         # Return the description of the variable
+#         return self.variable_descriptions[name]
+#
 
-    def get_var_description(self, name: str) -> str:
+    def get_branches_var(self, name: str) -> list[Symbol | Number]:
         """
-        Get the description of a variable
+        Get the value of a variable for each branch
         :param name: The name of the variable
-        :return: The description of the variable
+        :return: A list of the values of the variable for each branch
         """
 
         # Raise an exception if the variable does not exist
-        if not hasattr(self, name) and name not in self.variable_descriptions:
+        if name not in self.context_stack.variables:
             raise KeyError(f'Variable {name} does not exist')
 
-        # Return the description of the variable
-        return self.variable_descriptions[name]
-
-    def _get_this_branch_var(self, name: str) -> Symbol | Number:
-        pass  # TODO: Implement
-
-    def get_branches_var(self, name: str) -> list[Symbol | Number]:
-        pass  # TODO: Implement
-
-    def _get_this_branch_vars(self):
-        """
-        Get all variables in the branch/context
-        :return: A dictionary of all variables in the branch
-        """
-
-        # Return a dictionary of all variables in the branch
-        return {name: self.context_stack.get_value(name) for name in sorted(self.variable_descriptions.keys())}
-
-    def vars(self, decimal=False) -> list[dict[str, Symbol | Number]]:
-        """
-        Get all variables among all solution branches
-        :return: A list of dictionaries of all variables for each solution branch
-        """
-
-        # Return a list of all variables for each solution branch
-        ret = []
-
-        for idx in range(self.context_stack.num_contexts):
-            ret.append(
-                {name: self.context_stack.get_value(name, idx) for name in sorted(self.variable_descriptions.keys())})
-
-        if not decimal:
-            return ret
-
-        # Option for returning decimal values
-        return [{key: value.evalf() for key, value in branch.items()} for branch in ret]
-
-    def num_branches(self) -> int:
-        """
-        Get the number of solution branches
-        :return: The number of solution branches
-        """
-
-        # Return the number of solution branches
-        return self.context_stack.num_contexts
-
-    def var_descriptions(self) -> dict[str: str]:
-        """
-        Get all variable descriptions
-        :return: A list of all variable descriptions
-        """
-
-        # Return a dictionary of all variable descriptions sorted by variable name
-        return {name: self.variable_descriptions[name] for name in sorted(self.variable_descriptions.keys())}
-
+        # Return a list of the value of the variable for each branch
+        return list({self.context_stack.get_value(name, idx) for idx in range(self.context_stack.num_contexts)})
+#
+#     def _get_this_branch_vars(self):
+#         """
+#         Get all variables in the branch/context
+#         :return: A dictionary of all variables in the branch
+#         """
+#
+#         # Return a dictionary of all variables in the branch
+#         return {name: self.context_stack.get_value(name) for name in sorted(self.variable_descriptions.keys())}
+#
+#     def vars(self, decimal=False) -> list[dict[str, Symbol | Number]]:
+#         """
+#         Get all variables among all solution branches
+#         :return: A list of dictionaries of all variables for each solution branch
+#         """
+#
+#         # Return a list of all variables for each solution branch
+#         ret = []
+#
+#         for idx in range(self.context_stack.num_contexts):
+#             ret.append(
+#                 {name: self.context_stack.get_value(name, idx) for name in sorted(self.variable_descriptions.keys())})
+#
+#         if not decimal:
+#             return ret
+#
+#         # Option for returning decimal values
+#         return [{key: value.evalf() for key, value in branch.items()} for branch in ret]
+#
+#     def var_descriptions(self) -> dict[str: str]:
+#         """
+#         Get all variable descriptions
+#         :return: A list of all variable descriptions
+#         """
+#
+#         # Return a dictionary of all variable descriptions sorted by variable name
+#         return {name: self.variable_descriptions[name] for name in sorted(self.variable_descriptions.keys())}
+#
     def del_branch(self) -> None:
         """
         Delete the current branch of the current context
         :return: None
         """
 
+        print('Deleting branch')
+
         # Make note of the current context
         old_context_idx = self.context_stack.context_idx
 
         # Rotate to the next context
-        self.context_stack.rotate_context_stack()
+        self.context_stack.rotate_context()
 
         # Delete the old context
         self.context_stack.remove_context(old_context_idx)
+#
+# # TODO update dependencies
+#
+# # TODO github workflow
+#
+# # TODO note how we won't remove final branch
 
-# TODO update dependencies
+# TODO get context by variable values
 
-# TODO github workflow
-
-# TODO note how we won't remove final branch
