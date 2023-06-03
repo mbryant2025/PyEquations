@@ -1,8 +1,8 @@
 from itertools import combinations
-from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number
+from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number, Expr, N
 from sympy.physics.units import Quantity
 from pyequations.context_stack import ContextStack
-from pyequations.__init__ import EPSILON
+from pyequations.__init__ import EPSILON  # TODO: move this to a config file
 
 
 def get_symbols(equations: [Eq]) -> tuple:
@@ -42,22 +42,102 @@ def remove_units(expr: Symbol | Number) -> Symbol | Number:
     return expr / units
 
 
-def composes_equation(lhs, rhs) -> bool:
+def is_constant(expr) -> bool:
+    """
+    Check if the expression is constant
+    For example, 2 * cm is constant, but x * cm is not
+    Precondition: The expression must be simplified
+    :param expr: The expression to check
+    :return: Whether the expression is constant
+    """
+
+    # If the expression is a number, it is constant
+    if isinstance(expr, int | float | complex):
+        return True
+
+    # If the expression is a symbol, it is not constant
+    if isinstance(expr, Symbol):
+        return False
+
+    # If the expression is a unit, it is constant
+    if isinstance(expr, Quantity):
+        return True
+
+    # If the expression is a number, it is constant
+    if isinstance(expr, Number):
+        return True
+
+    # If calling N() on the expression is different from the expression, call is_constant on the result
+    if (result := N(expr)) != expr:
+        return is_constant(result)
+
+    # If the expression is an expression, check if it is constant
+    if isinstance(expr, Expr):
+
+        # If the expression is a Mul, check if all the args are constant
+        if isinstance(expr, Mul):
+            return all(is_constant(arg) for arg in expr.args)
+
+        # If the expression is an Add, check if all the args are constant
+        if isinstance(expr, Add):
+            return all(is_constant(arg) for arg in expr.args)
+
+        # If the expression is a Pow, check if the base and exponent are constant
+        if isinstance(expr, Pow):
+            return is_constant(expr.base) and is_constant(expr.exp)
+
+    # If the expression is not a number, symbol, or expression, it is not constant
+    return False
+
+
+def composes_equation(lhs, rhs) -> int:
     """
     Check if the two elements compose an equation
     If there are no free symbols, it is not an equation
     Otherwise, we check that the sides are 'close enough' to be considered equal
+    Precondition: The expressions must be simplified
     :param lhs: The left hand side of the equation
     :param rhs: The right hand side of the equation
-    :return: True if the elements compose an equation, False otherwise
+    :return: 1 if the elements compose an equation, 0 if they do not, or -1 if a contradiction is found
     """
 
-    # If either side contains free symbols, it is an equation
-    if len(get_symbols([lhs, rhs])) > 0:
-        return True
+    valid, invalid, contradiction = 1, 0, -1
 
-    # Otherwise, check if the sides are 'close enough' to be considered equal
-    return abs(lhs - rhs) < EPSILON
+    lhs_constant = is_constant(lhs)
+    rhs_constant = is_constant(rhs)
+
+    # If both sides are expressions, check if they are equal
+    if not lhs_constant and not rhs_constant:
+        # No need to simplify because both are already simplified
+        equal = lhs - rhs == 0
+        return invalid if equal else valid
+
+    # If either side contains free symbols, it is an equation
+    elif not lhs_constant or not rhs_constant:
+        # Still need to check if they are equal
+        # Flip the sides if the rhs is an expression
+        if lhs_constant:
+            lhs, rhs = rhs, lhs
+        # No need to simplify because both are already simplified
+        equal = lhs - rhs == 0
+        return invalid if equal else valid
+
+    # Final case: numeric values on both sides
+    # Check if the sides are 'close enough' to be considered equal
+    # If lhs and rhs are both numbers, check if they are equal
+    else:
+        sub = abs(lhs - rhs)
+        equal = sub == 0
+        # Check for EPSILON tolerance
+        if not equal:
+            # Check if the difference is less than EPSILON * the smaller value
+            # This is to account for floating point errors
+            try:
+                equal = sub < EPSILON * min(abs(lhs), abs(rhs))
+            except TypeError:
+                # A type error will be raised if the values are not comparable such as seconds < meters
+                return contradiction
+        return contradiction if not equal else invalid
 
 
 class PyEquations:
@@ -292,10 +372,12 @@ class PyEquations:
             # Call the function from the context of the branch
             result = function()
             if len(result) == 2:
+                # Simplify the results here to make all other operations faster
+                result = [simplify(e) for e in result]
                 print('Result: ', result)
                 # Check if the result is an equation
                 # Also ensure that the equation is not trivially true
-                # if composes_equation(*result):
+                # if composes_equation(*result): # TODO
                 resulting_eq = Eq(*result)
                 equations.add(resulting_eq)
             else:

@@ -1,12 +1,13 @@
-from sympy import symbols, Eq, sqrt, I, Symbol
+from sympy import symbols, Eq, sqrt, I, Symbol, pi, Number, N, simplify
 from sympy.physics.units import cm, meter, second
 from pyequations import __version__
-from pyequations.inheritables import get_symbols, PyEquations, remove_units, composes_equation
+from pyequations.inheritables import get_symbols, PyEquations, remove_units, composes_equation, is_constant
 from pyequations.utils import solved
 from pyequations.decorators import eq, func
 from pytest import raises
 from pyequations.__init__ import EPSILON
 from pyequations.context_stack import ContextStack
+import math
 
 
 def within_tolerance(expected, actual, percent=0.001):
@@ -46,38 +47,165 @@ def test_get_symbols():
     assert set(get_symbols(eqs)) == {x}
 
 
+def test_is_constant():
+
+    x = Symbol('x')
+    assert not is_constant(x)
+
+    x = 1
+    assert is_constant(x)
+
+    x = 1 * cm
+    assert is_constant(x)
+
+    x = 1 * cm / second
+    assert is_constant(x)
+
+    x = 1 * cm / second ** 2
+    assert is_constant(x)
+
+    x = 5.4
+    assert is_constant(x)
+
+    x = 5.4 * cm
+    assert is_constant(x)
+
+    x = 5.4 * cm / second
+    assert is_constant(x)
+
+    x = 5.4 * cm / second ** 2
+    assert is_constant(x)
+
+    x = Symbol('x') * cm
+    assert not is_constant(x)
+
+    x = pi
+    assert is_constant(x)
+
+    x = pi * cm
+    assert is_constant(x)
+
+    x = pi * cm / second
+    assert is_constant(x)
+
+    x = pi * cm / second ** 2
+    assert is_constant(x)
+
+    x = Symbol('x') * cm / second
+    assert not is_constant(x)
+
+    x = Symbol('x') * cm / second ** 2
+    assert not is_constant(x)
+
+    x = Symbol('x') * cm / second ** 2 + 1
+    assert not is_constant(x)
+
+    x = Symbol('x') * cm / second ** 2 + 1 * cm
+    assert not is_constant(x)
+
+    x = 10 * cm / second ** 2 + 1 * cm / second
+    assert is_constant(x)
+
+    x = 10 + Symbol('x')
+    assert not is_constant(x)
+
+    x = 10 * cm + Symbol('x')
+    assert not is_constant(x)
+
+    x = 10 * pi + Symbol('x') - Symbol('x')
+    assert is_constant(x)
+
+    x = Symbol('x') * (1 * cm / second ** 2 + 1) / Symbol('x')
+    assert is_constant(x)
+
+    y = Symbol('y')
+    # This mess evaluates to 0
+    # Simplify will already have been called on the equation
+    x = simplify((y + sqrt(y)/42) - (1/42 * (42 * sqrt(y) + 1) * sqrt(y)))
+    assert is_constant(x)
+
+
 def test_composes_equation():
 
     # Test with a single equation
     lhs = Symbol('x')
     rhs = 1
 
-    assert composes_equation(lhs, rhs)
+    assert composes_equation(lhs, rhs) == 1
 
     # Test with an identity
     lhs = Symbol('x')
     rhs = Symbol('x')
 
-    assert not composes_equation(lhs, rhs)
+    assert composes_equation(lhs, rhs) == 0
 
     # Test with a numerical identity
     lhs = 1
     rhs = 1
 
-    assert not composes_equation(lhs, rhs)
+    assert composes_equation(lhs, rhs) == 0
 
     # Test with a numerical identity with units
 
     lhs = 1 * cm
     rhs = 1 * cm
 
-    assert not composes_equation(lhs, rhs)
+    assert composes_equation(lhs, rhs) == 0
 
     # Test with values that are not equal but close enough (within EPSILON)
     lhs = 1
     rhs = 1 + EPSILON / 2
 
-    assert not composes_equation(lhs, rhs)
+    assert composes_equation(lhs, rhs) == 0
+
+    # Test with values that are not equal but close enough (within EPSILON)
+    lhs = -1
+    rhs = -1 - EPSILON / 2
+
+    assert composes_equation(lhs, rhs) == 0
+
+    # Test with values that are not equal but close enough (within EPSILON)
+    lhs = -1
+    rhs = -1 + EPSILON / 2
+
+    assert composes_equation(lhs, rhs) == 0
+
+    # Test with values that are equal but not identical
+    lhs = 1
+    rhs = 1.0
+
+    assert composes_equation(lhs, rhs) == 0
+
+    # Test with values that are equal but not identical with units
+
+    lhs = 1 * cm
+    rhs = 1.0 * cm
+
+    assert composes_equation(lhs, rhs) == 0
+
+    # Test with expressions that evaluate to the same value
+    lhs = sqrt(2) * sqrt(2)
+    rhs = 2
+
+    assert composes_equation(lhs, rhs) == 0
+
+    # Test with valids that are not equal
+    lhs = 1
+    rhs = 2
+
+    assert composes_equation(lhs, rhs) == -1
+
+    # Test with valids that are not equal with units
+    lhs = 1 * cm
+    rhs = 2 * cm
+
+    assert composes_equation(lhs, rhs) == -1
+
+    # Test with expressions that evaluate to the same value with different units
+    lhs = sqrt(2) * sqrt(2) * cm
+    rhs = 2 * second
+
+    assert composes_equation(lhs, rhs) == -1
 
 
 def test_class_variables():
