@@ -1,7 +1,6 @@
 from itertools import combinations
 from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number
 from sympy.physics.units import Quantity
-from context_stack import ContextStack
 
 
 def get_symbols(equations: [Eq]) -> tuple:
@@ -49,19 +48,19 @@ class PyEquations:
 
     def __init__(self, var_descriptions: dict[str, str] | list[str]):
 
+        # Create context stack variable
+        self._context_stack = None
         # Sympy expressions to solve for
         self.eqs: list[callable] = []
         # User defined functions
         self.funcs: list[callable] = []
-        # Create context stack variable
-        self.context_stack = None
 
         if var_descriptions:
             if isinstance(var_descriptions, dict):
-                self._create_context_stack(list(var_descriptions.keys()))
+                self._context_stack = ContextStack(list(var_descriptions.keys()))
                 self.variable_descriptions = var_descriptions
             elif isinstance(var_descriptions, list):
-                self._create_context_stack(var_descriptions)
+                self._context_stack = ContextStack(var_descriptions)
                 self.variable_descriptions = {name: "" for name in var_descriptions}
         else:
             raise ValueError("Must have at least one variable description")
@@ -76,20 +75,19 @@ class PyEquations:
             elif hasattr(method, '__user_func__'):
                 self.funcs.append(method)
 
-    @staticmethod
-    def _create_context_stack(var_descriptions: list) -> None:
+    @property
+    def context_stack(self):
+        return self._context_stack
+
+    def __getattr__(self, name):
         """
-        Create the context stack
-        :return: None
+        Get the attribute for the current branch
+        :param name: the attribute name
+        :return: the attribute value
         """
 
-        attr_name = "context_stack"
-
-        if var_descriptions is not None:
-            # Create the context stack as a property such that it can be accessed as an attribute in __getattr__
-            setattr(PyEquations, attr_name, property(lambda obj: ContextStack(var_descriptions)))
-        else:
-            raise ValueError("Must have at least one variable description")
+        print(f'accessing {name}')
+        print(self._context_stack)
 
     def _super_setattr(self, name, value):
         """
@@ -122,15 +120,7 @@ class PyEquations:
         else:
             super().__setattr__(name, value)
 
-    def __getattr__(self, name):
-        """
-        Get the attribute for the current branch
-        :param name: the attribute name
-        :return: the attribute value
-        """
 
-        print(f'accessing {name}')
-        print(self.context_stack)
 
     def _eval_funcs(self) -> None:
         """

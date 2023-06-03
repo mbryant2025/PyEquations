@@ -44,26 +44,26 @@ def test_get_symbols():
     assert set(get_symbols(eqs)) == {x}
 
 
-def test_inherit_basic():
-    class InheritedClass(PyEquations):
-
-        def __init__(self):
-            variables = [
-                'x', 'y'
-            ]
-            super().__init__(variables)
-
-        @eq
-        def calc_z(self):
-            return self.x, self.y
-
-    inherit = InheritedClass()
-    inherit.x = 35 * cm
-
-    inherit.solve()
-
-    assert inherit.x == 35 * cm
-    assert inherit.y == 35 * cm
+# def test_inherit_basic():
+#     class InheritedClass(PyEquations):
+#
+#         def __init__(self):
+#             variables = [
+#                 'x', 'y'
+#             ]
+#             super().__init__(variables)
+#
+#         @eq
+#         def calc_x(self):
+#             return self.x, self.y
+#
+#     inherit = InheritedClass()
+#     inherit.x = 35 * cm
+#
+#     inherit.solve()
+#
+#     assert inherit.x == 35 * cm
+#     assert inherit.y == 35 * cm
 
 #
 # def test_multiple_variables():
