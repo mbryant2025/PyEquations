@@ -148,7 +148,7 @@ class PyEquations:
         else:
             self._super_setattr(name, value)
 
-    def add_variables(self , var_descriptions: dict[str, str] | list[str]) -> None:
+    def add_variables(self, var_descriptions: dict[str, str] | list[str]) -> None:
         """
         Add variables to the context stack
         Cannot be done after the context stack has branched
@@ -303,7 +303,7 @@ class PyEquations:
         # Mark that we can now advance to the next context
         self.advance_branch.set(True)
 
-    def observe_floats(self, equations: list) -> None:
+    def _observe_floats(self, equations: list) -> None:
         """
         Observe the specified floats and add them to the list of floats to observe
         :param equations: The equations to observe
@@ -337,7 +337,7 @@ class PyEquations:
                     # Valid equation
                     case 1:
                         # Can only observe once we have samples of the magnitude of numbers that compose the solution
-                        self.observe_floats(result)
+                        self._observe_floats(result)
                         resulting_eq = Eq(*result)
                         equations.add(resulting_eq)
                     # Invalid equation

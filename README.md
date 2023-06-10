@@ -320,7 +320,9 @@ Also as demonstrated in the Recursive Branching section, PyEquations does not re
 Let's say you were working with this system
 
 $$ x^2 = 16 $$
+
 $$ x + y = 10 $$
+
 $$ x - y = -2 $$
 
 Looking at the first equation, PyEquations would branch into two branches, one with $x = 4$ and one with $x = -4$.
@@ -331,6 +333,46 @@ If neither $x = 4$ nor $x = -4$ were valid, PyEquations would raise a `RuntimeEr
 
 
 ## API
+* `@eq` 
+  * Function decorator used for notifying PyEquations that a method is an equation
+  * The method must return a tuple of the form (expression, expression), with the comma symbolizing an equality
+* `@func`
+  * Function decorator used for notifying PyEquations that a method is a function
+  * The method will be run during solving
+  * Can access/modify variables and delete branches
+* `solve() -> None`
+  * Used for running the solver
+* `vars` 
+  * Property used for getting the solution in exact form
+  * The solution is returned as a list of dictionaries
+* `vars_decimal`
+  * Property used for getting the solution in decimal form
+  * The solution is returned as a list of dictionaries
+* `num_branches`
+  * Property used for getting the number of solution branches
+  * Returns an int
+* `locked`
+  * Property used for getting the locked status of the object
+  * Returns a bool
+  * Locks from changing or adding variables
+  * Automatically locked after branching
+* `add_variables(var_descriptions: dict[str, str] | list[str]) -> None`
+  * Used for adding variables to the system
+  * Must be called before branching
+* `context_switch(self, target_branch: int) -> None`
+  * Used for switching to a different branch
+  * Mostly used internally, but can be used to switch contexts manually to easily access variables
+* `rotate_context(self) -> None`
+  * Mostly used internally, but can be used to rotate contexts manually to easily access variables
+* `delete_branch(self, branch: int) -> None` used for deleting a branch
+  * Used in `@func` decorated methods
+* `var_description(self, name: str) -> str` 
+  * Used for getting the description of a variable
+* `get_var_vals(self, name: str) -> list`
+  * Used for getting the values of a variable spanning all branches
+* `get_var_vals_decimal(self, name: str) -> list`
+  * Used for getting the decimal values of a variable spanning all branches
+
 
 ## Additional Notes
 
