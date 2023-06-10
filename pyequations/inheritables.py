@@ -564,9 +564,3 @@ class PyEquations:
         self.context_stack.remove_context(self.context_stack.context_idx)
         # Note that we have deleted a branch
         self.deletions.increment()
-#
-# # TODO update dependencies
-#
-# # TODO github workflow
-
-# TODO get context by variable values
