@@ -1,143 +1,9 @@
 from itertools import combinations
-from sympy import symbols, Symbol, solve, Eq, Number, simplify, Mul, Add, Pow, Symbol, Number, Expr, N
-from sympy.physics.units import Quantity
+from sympy import solve, Eq, simplify, Mul, Add, Pow, Symbol, Number, N, Expr
+from warnings import warn
 from pyequations.context_stack import ContextStack
-from pyequations.__init__ import EPSILON  # TODO: move this to a config file
-
-
-def get_symbols(equations: [Eq]) -> tuple:
-    """
-    Get all the symbols in an equation
-    :param equations: The equations
-    :return: A tuple of all the symbols
-    """
-
-    # Return a tuple of all the symbols in the equation
-    return tuple({sym for e in equations if isinstance(e, Eq) for sym in e.free_symbols})
-
-
-def _is_solved(var) -> bool:
-    """
-    Check if the variable is solved
-    :param var: the attribute to check
-    :return: Whether the variable is solved
-    """
-
-    return not isinstance(var, Symbol)
-
-
-def remove_units(expr: Symbol | Number) -> Symbol | Number:
-    """
-    Remove the units from a given expression
-    :param expr: An expression
-    :return: The expression with the units removed
-    """
-    if expr is None:
-        return None
-    if isinstance(expr, (int, float)):
-        return expr
-    if not expr.has(Quantity):
-        return expr
-    units = expr.subs({x: 1 for x in expr.args if not x.has(Quantity)})
-    return expr / units
-
-
-def is_constant(expr) -> bool:
-    """
-    Check if the expression is constant
-    For example, 2 * cm is constant, but x * cm is not
-    Precondition: The expression must be simplified
-    :param expr: The expression to check
-    :return: Whether the expression is constant
-    """
-
-    # If the expression is a number, it is constant
-    if isinstance(expr, int | float | complex):
-        return True
-
-    # If the expression is a symbol, it is not constant
-    if isinstance(expr, Symbol):
-        return False
-
-    # If the expression is a unit, it is constant
-    if isinstance(expr, Quantity):
-        return True
-
-    # If the expression is a number, it is constant
-    if isinstance(expr, Number):
-        return True
-
-    # If calling N() on the expression is different from the expression, call is_constant on the result
-    if (result := N(expr)) != expr:
-        return is_constant(result)
-
-    # If the expression is an expression, check if it is constant
-    if isinstance(expr, Expr):
-
-        # If the expression is a Mul, check if all the args are constant
-        if isinstance(expr, Mul):
-            return all(is_constant(arg) for arg in expr.args)
-
-        # If the expression is an Add, check if all the args are constant
-        if isinstance(expr, Add):
-            return all(is_constant(arg) for arg in expr.args)
-
-        # If the expression is a Pow, check if the base and exponent are constant
-        if isinstance(expr, Pow):
-            return is_constant(expr.base) and is_constant(expr.exp)
-
-    # If the expression is not a number, symbol, or expression, it is not constant
-    return False
-
-
-def composes_equation(lhs, rhs) -> int:
-    """
-    Check if the two elements compose an equation
-    If there are no free symbols, it is not an equation
-    Otherwise, we check that the sides are 'close enough' to be considered equal
-    Precondition: The expressions must be simplified
-    :param lhs: The left hand side of the equation
-    :param rhs: The right hand side of the equation
-    :return: 1 if the elements compose an equation, 0 if they do not, or -1 if a contradiction is found
-    """
-
-    valid, invalid, contradiction = 1, 0, -1
-
-    lhs_constant = is_constant(lhs)
-    rhs_constant = is_constant(rhs)
-
-    # If both sides are expressions, check if they are equal
-    if not lhs_constant and not rhs_constant:
-        # No need to simplify because both are already simplified
-        equal = lhs - rhs == 0
-        return invalid if equal else valid
-
-    # If either side contains free symbols, it is an equation
-    elif not lhs_constant or not rhs_constant:
-        # Still need to check if they are equal
-        # Flip the sides if the rhs is an expression
-        if lhs_constant:
-            lhs, rhs = rhs, lhs
-        # No need to simplify because both are already simplified
-        equal = lhs - rhs == 0
-        return invalid if equal else valid
-
-    # Final case: numeric values on both sides
-    # Check if the sides are 'close enough' to be considered equal
-    # If lhs and rhs are both numbers, check if they are equal
-    else:
-        sub = abs(lhs - rhs)
-        equal = sub == 0
-        # Check for EPSILON tolerance
-        if not equal:
-            # Check if the difference is less than EPSILON * the smaller value
-            # This is to account for floating point errors
-            try:
-                equal = sub < EPSILON * min(abs(lhs), abs(rhs))
-            except TypeError:
-                # A type error will be raised if the values are not comparable such as seconds < meters
-                return contradiction
-        return contradiction if not equal else invalid
+from pyequations.utils import get_symbols, composes_equation, BoolWrapper, IntWrapper, MinFloatTracker
+from copy import deepcopy
 
 
 class PyEquations:
@@ -160,6 +26,25 @@ class PyEquations:
         self._super_setattr('eqs', [])
         # User defined functions
         self._super_setattr('funcs', [])
+
+        # Branches marked for pruning
+        self._super_setattr('contexts_to_prune', {})
+        # Advance branch flag -- used when a branch is pruned, and we need to advance to the next branch
+        self._super_setattr('advance_branch', BoolWrapper(False))
+        # Number of deletions for a current solve
+        # Important for determining if there are any valid solutions
+        self._super_setattr('deletions', IntWrapper(0))
+
+        # If the object has been solved
+        self._super_setattr('solved', BoolWrapper(False))
+
+        # If a bad solution was found
+        self._super_setattr('bad_solution', BoolWrapper(False))
+
+        # The minimum numerical quantity handled in the system
+        # Used to use as a reference if a value is compared to zero
+        # Ex. if the minimum number dealt ith is 5e-20, then technically 5e-15 is within the margin of error
+        self._super_setattr('min_float', MinFloatTracker())
 
         if var_descriptions:
             if isinstance(var_descriptions, dict):
@@ -199,6 +84,27 @@ class PyEquations:
 
         return self.context_stack.contexts
 
+    @property
+    def vars_decimal(self) -> list[dict[str, float]]:
+        """
+        Get the variables for all branches
+        Understandably could have this and the above be a function, but since these are used so often, it is
+        better to have them as a property
+        :return: A list of dictionaries containing the variables for each branch
+        """
+
+        non_decimal = self.vars
+        return [{key: N(value) for key, value in branch.items()} for branch in non_decimal]
+
+    @property
+    def locked(self) -> bool:
+        """
+        Get if the object is locked
+        :return: True if the object is locked, False otherwise
+        """
+
+        return self.context_stack.locked
+
     def __getattr__(self, name):
         """
         Get the attribute for the current branch
@@ -222,6 +128,11 @@ class PyEquations:
         :return: None
         """
 
+        # If we have already solved the equations, raise a warning and do not set the attribute
+        if self.solved:
+            warn('Equations have already been solved. Cannot add new variables')
+            return
+
         # If the value is an int, float, or complex, set the value for all branches
         # (Also include the sympy types)
         if isinstance(value, int | float | complex | Mul | Add | Pow | Symbol | Number):
@@ -237,13 +148,30 @@ class PyEquations:
         else:
             self._super_setattr(name, value)
 
+    def add_variables(self , var_descriptions: dict[str, str] | list[str]) -> None:
+        """
+        Add variables to the context stack
+        Cannot be done after the context stack has branched
+        In this case, an exception will be raised
+        :param var_descriptions: The variable descriptions to add
+        :return: None
+        """
+
+        # If the variable descriptions are a dictionary, add them to the context stack
+        if isinstance(var_descriptions, dict):
+            self.context_stack.add_variables(list(var_descriptions.keys()))
+            self.var_descriptions.update(var_descriptions)
+        # Otherwise, if the variable descriptions are a list, add them to the context stack
+        elif isinstance(var_descriptions, list):
+            self.context_stack.add_variables(var_descriptions)
+            self.var_descriptions.update({name: '' for name in var_descriptions})
+
     def _eval_funcs(self) -> None:
         """
         Evaluate all the user defined functions for the current branch
         :return: None
         """
 
-        # TODO
         # Loop through all the user-defined functions and evaluate them
         for f in self.funcs:
             try:
@@ -284,8 +212,6 @@ class PyEquations:
 
         if not bool(solution):
             return None
-
-        symbol_names = [str(sym) for sym in target_variables]
 
         # If solution is a list, it is not an individual solution
         if isinstance(solution, list):
@@ -359,6 +285,38 @@ class PyEquations:
             # Unknown type, not a valid solution. Throw an exception
             raise RuntimeError(f'Unknown solution type {solution}')
 
+    def _mark_for_pruning(self, equations: list) -> None:
+        """
+        Mark the current context for pruning by adding a hash to the list of hashes to prune
+        Also carry the offending equation with the hash, so it can be printed if an exception is thrown
+        :return: None
+        """
+
+        # Generate a hash for the current context
+        current_context = self.context_stack.contexts[self.context_stack.context_idx]
+        # Specifically, we want to hash the values of the context, not the keys
+        context_hash = hash(tuple(sorted(current_context.items())))
+        print(f'this is the context hash: {context_hash}')
+        # Add the context hash to the list of contexts to prune
+        # Also have the value be the equation that caused the contradiction, so it can be printed
+        # if an exception is thrown
+        self.contexts_to_prune[context_hash] = equations
+        # Mark that we can now advance to the next context
+        self.advance_branch.set(True)
+
+    def observe_floats(self, equations: list) -> None:
+        """
+        Observe the specified floats and add them to the list of floats to observe
+        :param equations: The equations to observe
+        :return: None
+        """
+
+        for equation in equations:
+            print(f'OBSERVING {N(equation)}')
+            # Extract the floats from the equation and add observe them
+            for num in Expr(equation).atoms(Number):
+                self.min_float.add(abs(num))
+
     def _retrieve_equations(self) -> set:
         """
         Retrieve all the equations from the calculation functions
@@ -374,19 +332,34 @@ class PyEquations:
             if len(result) == 2:
                 # Simplify the results here to make all other operations faster
                 result = [simplify(e) for e in result]
-                print('Result: ', result)
-                # Check if the result is an equation
-                # Also ensure that the equation is not trivially true
-                # if composes_equation(*result): # TODO
-                resulting_eq = Eq(*result)
-                equations.add(resulting_eq)
+                # Check if the result is an equation that could produce a valid solution
+                # Also, handle the case where there is a contradiction (return -1)
+                can_compose = composes_equation(*result, self.min_float.value)
+                print(f'can {result} compose? {can_compose}')
+                match can_compose:
+                    # Valid equation
+                    case 1:
+                        # Also observe the floats here
+                        self.observe_floats(result) # TODO observe better
+                        resulting_eq = Eq(*result)
+                        equations.add(resulting_eq)
+                    # Invalid equation
+                    case 0:
+                        continue
+                    # Contradiction
+                    case -1:
+                        print(f'Contradiction found in {result}')
+                        print(f'the current context is {self.context_stack.contexts[self.context_stack.context_idx]}')
+                        # Mark the current context for pruning
+                        # Note how a list type is passed, this is because this same function can be called elsewhere
+                        # with a list of equations that are all contradictory (but not necessarily on their own)
+                        self._mark_for_pruning([result])
+                        print('------------------------')
+                        # TODO terminate branch solving for now -- not necessary, but will speed up the process
             else:
                 raise ValueError(f'Function does not return two elements {function}')
 
-        # This is the major bottleneck in the code
-        # However, it is necessary  to ensure that comparing them does not yield false inequalities
-        # return {simplify(e) for e in equations}
-        return equations  # TODO reconsider if we need to simplify
+        return equations
 
     def _run_solver_this_branch(self) -> None:
         """
@@ -402,9 +375,12 @@ class PyEquations:
         # Remove any equations that are True as they are redundant
         equations = self._retrieve_equations()
 
-        equations = [e for e in equations if e != True]
+        # If the advance_branch flag is set, return
+        # This means that a contradiction was found and the branch should be pruned
+        if self.advance_branch:
+            return
 
-        print('Equations: ', equations)
+        print(f'equations: {equations}')
 
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
@@ -415,10 +391,17 @@ class PyEquations:
                 # Attempt to solve the subgroup of equations
                 solution = solve(subgroup, *target_variables)
 
-                # If solution == [], there is no solution for this subgroup, raise an exception
-                # TODO kill branch
+                print(f'solution: {solution}')
+
+                # If solution == [], there is no solution for this subgroup
                 if not solution:
-                    raise RuntimeError(f'Equations have no solutions: {subgroup}')
+                    # This branch shouldn't necessarily be pruned, but we need to throw special flag
+                    # Specifically, if the vars before solving and the vars after solving are the same, then
+                    # we should throw the flag. This is because some solutions may have branches that lead to this point
+                    # and we don't want to prune those branches because that set of equations could spawn a valid
+                    # solution. So, we need to check if the variables are the same before and after solving.
+                    # This would indicate that the equations are not solvable, and we should throw an exception.
+                    self.bad_solution.set(True)
 
                 # Verify the solution is valid; handle solution branching
                 sol = self._verify_and_extract_solution(solution, target_variables)
@@ -438,6 +421,52 @@ class PyEquations:
         # Re-evaluate all the user defined functions in case of new information
         self._eval_funcs()
 
+    def _prune_branches(self) -> None:
+        """
+        Prune the branches that are marked for pruning
+        :return: None
+        """
+        # return  # TODO
+        print(f'we found {len(self.contexts_to_prune)} to prune they are {self.contexts_to_prune}')
+
+        # If there are as many branches as there are contexts, raise an exception because there are no solutions
+        # Also need to offset the number of branches by the number of deletions
+        if self.num_branches - self.deletions.value == len(self.contexts_to_prune):  # TODO
+
+            print(f'here are the vars {self.vars}')
+
+            # Make quick-and-dirty pretty_equation function for use in just this exception throwing
+            # (Cannot have the second string be an f-string because that would mean nested f-strings)
+            def pretty_equation(equations):
+                s = ''
+                for eqn in equations:
+                    s += f'{eqn[0]} = {eqn[1]}, '
+                return s[:-2]
+
+            print(self.contexts_to_prune)
+
+            raise RuntimeError('Given equations have no consistent solutions. '
+                               'Please check your equations and try again. '
+                               'Contradiction(s) found: '
+                               f'{[pretty_equation(equations) for equations in self.contexts_to_prune.values()]}')
+
+        # Otherwise, prune the branches by finding the branches that match the hash
+        # Also, ensure that the context idx is not greater than the number of contexts
+        for context_hash, equation in self.contexts_to_prune.items():
+            for branch_idx, branch in enumerate(self.context_stack.contexts):
+                # If the branch matches the hash, prune it
+                if hash(tuple(sorted(branch.items()))) == context_hash:
+                    # Remove the context
+                    self.context_stack.remove_context(branch_idx)
+                    # Break out of the inner loop as we have found the branch to prune
+                    break
+
+        # Ensure that the actual idx pointer is not greater than the number of contexts
+        self.context_stack.context_idx = min(self.context_stack.context_idx, self.context_stack.num_contexts - 1)
+
+        # Reset the prune branches dictionary
+        self.contexts_to_prune.clear()
+
     def solve(self) -> None:
         """
         Trigger the solver on all existing branches
@@ -445,67 +474,75 @@ class PyEquations:
         :return: None
         """
 
+        # If the object has been solved before, throw a warning
+        if self.solved:
+            warn('This object has already been solved. '
+                 'Please create a new object to solve again.'
+                 'Solving multiple times could cause undetermined behavior in the branching behavior'
+                 'if variables are changed after the first solve.')
+
+        # Clear contexts_to_prune dictionary
+        self.contexts_to_prune.clear()
+
+        # Reset the bad_solution flag
+        self.bad_solution.set(False)
+
+        # Store the current context idx
         old_context_idx = self.context_stack.context_idx
+
+        # Store the current solution as a copy of self.vars
+        old_solution = deepcopy(self.vars)
 
         # Iterate through all the branches and solve them
         # Iterate by rotating the context stack until we are back at where we started
         # This accounts for new branches being added during the solving process
 
-        # Rotate off the first context
-        self._run_solver_this_branch()
-        self.context_stack.rotate_context()
+        # Local function to run the solver on the current branch
+        def run_single():
+            # Run the solver on the current branch
+            self._run_solver_this_branch()
+            # Rotate off the first context
+            self.context_stack.rotate_context()
+            # Reset the advance_branch flag
+            self.advance_branch.set(False)
+            # Reset the number of deleted branches
+            self.deletions.set(0)
+
+        run_single()
 
         # Wishing do-while loops were a thing in python...
 
         # Continue rotating until we are back at the first context
         while self.context_stack.context_idx != old_context_idx:
-            self._run_solver_this_branch()
-            self.context_stack.rotate_context()
+            run_single()
 
-    def _clear_single_var(self, name: str) -> None:
+        # After solving, prune any branches that are marked for pruning
+        # Also check if there are no solutions and throw an exception accordingly
+        self._prune_branches()
+
+        # If the solution is bad and the branches did not change, throw an exception
+        if self.bad_solution and old_solution == self.vars:
+            raise RuntimeError('Given equations have no consistent solutions. '
+                               'Please check your equations and try again.')
+
+        # Mark the object as solved
+        self.solved.set(True)
+
+    def var_description(self, name: str) -> str:
         """
-        Returns a variable to a variable (potentially from a value)
-        Applies for a single context
+        Get the description of a variable
         :param name: The name of the variable
-        :return: None
+        :return: The description of the variable
         """
 
         # Raise an exception if the variable does not exist
-        if name not in self.context_stack.variables:
+        if name not in self.var_descriptions:
             raise KeyError(f'Variable {name} does not exist')
 
-        # Set the variable to the symbol for all contexts
-        for idx in range(self.context_stack.num_contexts):
-            self.context_stack.set_value(name, Symbol(name), idx)
+        # Return the description of the variable
+        return self.var_descriptions[name]
 
-    def clear_var(self, *variables) -> None:
-        """
-        Used for changing values back to variables for all contexts
-        :param variables: The names of the variables
-        :return: None
-        """
-
-        # Loop through all the variables
-        for variable in variables:
-            # Clear the variable
-            self._clear_single_var(variable)
-#
-#     def get_var_description(self, name: str) -> str:
-#         """
-#         Get the description of a variable
-#         :param name: The name of the variable
-#         :return: The description of the variable
-#         """
-#
-#         # Raise an exception if the variable does not exist
-#         if not hasattr(self, name) and name not in self.variable_descriptions:
-#             raise KeyError(f'Variable {name} does not exist')
-#
-#         # Return the description of the variable
-#         return self.variable_descriptions[name]
-#
-
-    def get_branches_var(self, name: str) -> list[Symbol | Number]:
+    def get_var_vals(self, name: str) -> list:
         """
         Get the value of a variable for each branch
         :param name: The name of the variable
@@ -518,66 +555,35 @@ class PyEquations:
 
         # Return a list of the value of the variable for each branch
         return list({self.context_stack.get_value(name, idx) for idx in range(self.context_stack.num_contexts)})
-#
-#     def _get_this_branch_vars(self):
-#         """
-#         Get all variables in the branch/context
-#         :return: A dictionary of all variables in the branch
-#         """
-#
-#         # Return a dictionary of all variables in the branch
-#         return {name: self.context_stack.get_value(name) for name in sorted(self.variable_descriptions.keys())}
-#
-#     def vars(self, decimal=False) -> list[dict[str, Symbol | Number]]:
-#         """
-#         Get all variables among all solution branches
-#         :return: A list of dictionaries of all variables for each solution branch
-#         """
-#
-#         # Return a list of all variables for each solution branch
-#         ret = []
-#
-#         for idx in range(self.context_stack.num_contexts):
-#             ret.append(
-#                 {name: self.context_stack.get_value(name, idx) for name in sorted(self.variable_descriptions.keys())})
-#
-#         if not decimal:
-#             return ret
-#
-#         # Option for returning decimal values
-#         return [{key: value.evalf() for key, value in branch.items()} for branch in ret]
-#
-#     def var_descriptions(self) -> dict[str: str]:
-#         """
-#         Get all variable descriptions
-#         :return: A list of all variable descriptions
-#         """
-#
-#         # Return a dictionary of all variable descriptions sorted by variable name
-#         return {name: self.variable_descriptions[name] for name in sorted(self.variable_descriptions.keys())}
-#
+
+    def get_var_vals_decimal(self, name: str) -> list:
+        """
+        Get the decimal value of a variable for each branch
+        :param name: The name of the variable
+        :return: A list of the values of the variable for each branch
+        """
+
+        # Raise an exception if the variable does not exist
+        if name not in self.context_stack.variables:
+            raise KeyError(f'Variable {name} does not exist')
+
+        # Return a list of the value of the variable for each branch
+        return list({N(self.context_stack.get_value(name, idx)) for idx in range(self.context_stack.num_contexts)})
+
     def del_branch(self) -> None:
         """
         Delete the current branch of the current context
         :return: None
         """
 
-        print('Deleting branch')
-
-        # Make note of the current context
-        old_context_idx = self.context_stack.context_idx
-
-        # Rotate to the next context
-        self.context_stack.rotate_context()
-
         # Delete the old context
-        self.context_stack.remove_context(old_context_idx)
+        # This handles updating the context idx
+        self.context_stack.remove_context(self.context_stack.context_idx)
+        # Note that we have deleted a branch
+        self.deletions.increment()
 #
 # # TODO update dependencies
 #
 # # TODO github workflow
-#
-# # TODO note how we won't remove final branch
 
 # TODO get context by variable values
-
