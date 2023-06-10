@@ -31,7 +31,7 @@ pip install pyequations
 
 ## Example
 
-Suppose we on top of a 100-meter tall building, and we throw a ball up with an initial velocity of 3 meter/second.
+Suppose we on top of a 100-meter tall building, and we throw a ball up with an initial velocity of 3 meters/second.
 After how long does the ball hit the ground and with what velocity?
 
 This is a simple problem if one has studied physics. Everything can be solved for using the kinematic equations (of constant acceleration):
