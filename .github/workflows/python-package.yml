@@ -31,6 +31,10 @@ jobs:
         python -m pip install -U poetry==${{ matrix.poetry-version }}
         python -m pip install -U pytest
 
+    - name: Install dependencies
+      run: |
+            poetry install
+
     - name: Test with pytest
       run: |
         poetry run pytest
