@@ -28,7 +28,7 @@ jobs:
       run: |
         python -m ensurepip
         python -m pip install --upgrade pip
-        python -m pip install poetry==${{ matrix.poetry-version }}
+        python -m pip install -U poetry==${{ matrix.poetry-version }}
 
     - name: Test with pytest
       run: |
