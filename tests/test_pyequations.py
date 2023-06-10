@@ -45,7 +45,7 @@ def assert_set_values_within_tolerance(expected, actual, percent=0.001):
 
 
 def test_version():
-    assert __version__ == '0.1.0'
+    assert __version__ == '0.1.1'
 
 
 def test_get_symbols():

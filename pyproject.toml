@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyequations"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Python package for solving a bunch of equations with a bunch of unknowns."
 authors = ["Michael Bryant <mbryant2025@gmail.com>"]
 
