@@ -30,10 +30,6 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install poetry==${{ matrix.poetry-version }}
 
-    - name: Install dependencies
-      shell: bash
-      run: python -m poetry install
-
     - name: Test with pytest
       run: |
         python -m poetry run python -m pytest -v tests
