@@ -1,30 +1,42 @@
-name: Python Tests
+name: Tests
 
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
 jobs:
-  test:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.10]
+        poetry-version: [1.1.4]
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+    - uses: actions/checkout@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.10
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          export PATH="$HOME/.poetry/bin:$PATH"
+    - name: Install poetry ${{ matrix.poetry-version }}
+      run: |
+        python -m ensurepip
+        python -m pip install --upgrade pip
+        python -m pip install poetry==${{ matrix.poetry-version }}
 
-      - name: Install dependencies
-        run: poetry install
+    - name: View poetry --help
+      run: poetry --help
 
-      - name: Run tests
-        run: poetry run pytest
+    - name: Install dependencies
+      shell: bash
+      run: python -m poetry install
+
+    - name: Test with pytest
+      run: |
+        python -m poetry run python -m pytest -v tests
