@@ -142,10 +142,6 @@ def composes_equation(lhs, rhs, min_float=1e-5) -> int:
     lhs_constant = is_constant(lhs)
     rhs_constant = is_constant(rhs)
 
-    print('\n')
-
-    print(f'are they constant? {lhs} {rhs} {lhs_constant} {rhs_constant}')
-
     # If both sides are expressions, check if they are equal
     if not lhs_constant and not rhs_constant:
         equal = False
@@ -185,6 +181,7 @@ def composes_equation(lhs, rhs, min_float=1e-5) -> int:
         # However, this is unlikely to happen in practice and an incorrect result here will likely not cause issues
         # This is because the system will likely be able to solve the system to the same extent, even if one equation is
         # incorrectly considered to be not usable
+        # But, just to be sure, we check twice with two different mappings
 
         # Get all the units in the lhs and rhs
         lhs_units = get_units(lhs)
@@ -260,13 +257,10 @@ class IntWrapper:
         return self.val
 
     def set(self, val: int):
-        print(f'Setting {self} to {val}')
         self.val = val
 
     def increment(self):
-        print(f'Incrementing {self}')
         self.val += 1
-        print(f'New value: {self.val}')
 
     def __repr__(self):
         return str(self.val)
@@ -274,7 +268,7 @@ class IntWrapper:
 
 class MinFloatTracker:
     """
-    A wrapper for a float value representing the minimum (nonzreo) value seen
+    A wrapper for a float value representing the minimum (nonzero) value seen
     """
 
     def __init__(self):

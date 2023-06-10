@@ -5,7 +5,7 @@ from pyequations.inheritables import PyEquations
 from pyequations.utils import solved, get_symbols, remove_units, is_constant, get_units, composes_equation
 from pyequations.decorators import eq, func
 from pytest import raises, warns
-from pyequations.__init__ import EPSILON
+from pyequations import EPSILON
 from pyequations.context_stack import ContextStack
 import math
 
@@ -418,7 +418,7 @@ def test_class_variables():
 
         @func
         def print_x(self):
-            print(self.x)
+            pass  # Don't want to actually print anything
 
     inherit = InheritedClass()
 
@@ -764,8 +764,6 @@ def test_some_multiple_some_single_solution_2():
     p.solve()
 
     assert p.num_branches == 4
-
-    print(p.vars)
 
     expected = [{'a': 1, 'b': 2, 'c': 3, 'x': -sqrt(5) / 5, 'y': sqrt(5) / 5},
                 {'a': 1, 'b': 2, 'c': 3, 'x': sqrt(5) / 5, 'y': -sqrt(5) / 5},
@@ -1310,8 +1308,6 @@ def test_kinematic():
 
     k.solve()
 
-    # print(f'k.vars = {k.vars}')
-
     # Check that only one solution was found
     assert k.num_branches == 1
 
@@ -1333,12 +1329,8 @@ def test_kinematic():
     k.x_f = 86.4 * meter
     k.a = -9.8 * meter / second ** 2
 
-    # print('SOLVING AGAIN')
-
     # Re-solve the equations
     k.solve()
-
-    # print(f'k.vars = {k.vars}')
 
     # Check that there are two solution branches
     assert k.num_branches == 2
@@ -1797,9 +1789,6 @@ def test_var_vals_decimal():
 
     k.solve()
 
-    print('min float:')
-    print(k.min_float.value)
-
     assert k.num_branches == 2
 
     # Asserting that the dictionaries here is noq quite easy because the values are all decimals and I can only
@@ -1836,8 +1825,6 @@ def test_warn_if_resolve():
     p = Problem()
 
     p.solve()
-
-    print(p.vars)
 
     # Mess with solution
     with warns(UserWarning):

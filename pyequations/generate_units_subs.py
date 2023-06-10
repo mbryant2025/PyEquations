@@ -1,4 +1,4 @@
-from pyequations.__init__ import RAND_RANGE, EPSILON
+from pyequations import RAND_RANGE, EPSILON
 from random import uniform
 import sympy.physics.units as u
 from sympy.physics.units import *
@@ -20,7 +20,6 @@ class UnitSub:
     def __init__(self):
         if UnitSub.__instance is None:
             UnitSub.__instance = self
-            print('GENERATING UNIT SUBS')
             UnitSub.mapping_a = generate()
             UnitSub.mapping_b = generate()
 

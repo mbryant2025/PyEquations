@@ -296,7 +296,6 @@ class PyEquations:
         current_context = self.context_stack.contexts[self.context_stack.context_idx]
         # Specifically, we want to hash the values of the context, not the keys
         context_hash = hash(tuple(sorted(current_context.items())))
-        print(f'this is the context hash: {context_hash}')
         # Add the context hash to the list of contexts to prune
         # Also have the value be the equation that caused the contradiction, so it can be printed
         # if an exception is thrown
@@ -312,7 +311,6 @@ class PyEquations:
         """
 
         for equation in equations:
-            print(f'OBSERVING {N(equation)}')
             # Extract the floats from the equation and add observe them
             for num in Expr(equation).atoms(Number):
                 self.min_float.add(abs(num))
@@ -335,12 +333,11 @@ class PyEquations:
                 # Check if the result is an equation that could produce a valid solution
                 # Also, handle the case where there is a contradiction (return -1)
                 can_compose = composes_equation(*result, self.min_float.value)
-                print(f'can {result} compose? {can_compose}')
                 match can_compose:
                     # Valid equation
                     case 1:
-                        # Also observe the floats here
-                        self.observe_floats(result) # TODO observe better
+                        # Can only observe once we have samples of the magnitude of numbers that compose the solution
+                        self.observe_floats(result)
                         resulting_eq = Eq(*result)
                         equations.add(resulting_eq)
                     # Invalid equation
@@ -348,14 +345,10 @@ class PyEquations:
                         continue
                     # Contradiction
                     case -1:
-                        print(f'Contradiction found in {result}')
-                        print(f'the current context is {self.context_stack.contexts[self.context_stack.context_idx]}')
                         # Mark the current context for pruning
                         # Note how a list type is passed, this is because this same function can be called elsewhere
                         # with a list of equations that are all contradictory (but not necessarily on their own)
                         self._mark_for_pruning([result])
-                        print('------------------------')
-                        # TODO terminate branch solving for now -- not necessary, but will speed up the process
             else:
                 raise ValueError(f'Function does not return two elements {function}')
 
@@ -380,8 +373,6 @@ class PyEquations:
         if self.advance_branch:
             return
 
-        print(f'equations: {equations}')
-
         # Attempt to solve every subgroup of the equations
         for r in range(1, len(equations) + 1):
             for subgroup in combinations(equations, r):
@@ -390,8 +381,6 @@ class PyEquations:
 
                 # Attempt to solve the subgroup of equations
                 solution = solve(subgroup, *target_variables)
-
-                print(f'solution: {solution}')
 
                 # If solution == [], there is no solution for this subgroup
                 if not solution:
@@ -426,14 +415,10 @@ class PyEquations:
         Prune the branches that are marked for pruning
         :return: None
         """
-        # return  # TODO
-        print(f'we found {len(self.contexts_to_prune)} to prune they are {self.contexts_to_prune}')
 
         # If there are as many branches as there are contexts, raise an exception because there are no solutions
         # Also need to offset the number of branches by the number of deletions
-        if self.num_branches - self.deletions.value == len(self.contexts_to_prune):  # TODO
-
-            print(f'here are the vars {self.vars}')
+        if self.num_branches - self.deletions.value == len(self.contexts_to_prune):
 
             # Make quick-and-dirty pretty_equation function for use in just this exception throwing
             # (Cannot have the second string be an f-string because that would mean nested f-strings)
@@ -442,8 +427,6 @@ class PyEquations:
                 for eqn in equations:
                     s += f'{eqn[0]} = {eqn[1]}, '
                 return s[:-2]
-
-            print(self.contexts_to_prune)
 
             raise RuntimeError('Given equations have no consistent solutions. '
                                'Please check your equations and try again. '

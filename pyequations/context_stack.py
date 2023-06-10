@@ -30,7 +30,7 @@ class ContextStack:
 
     def __init__(self, var_names: list[str] = None):
 
-        # Validate the variable names # TODO tests this
+        # Validate the variable names
         if var_names is not None:
             verify_names(var_names)
 
