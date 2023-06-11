@@ -1,4 +1,4 @@
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 # Define the epsilon value
 # Used as a tolerance for floating point comparisons
