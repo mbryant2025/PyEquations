@@ -4,6 +4,8 @@ version = "0.1.2"
 description = "A Python package for solving a bunch of equations with a bunch of unknowns."
 authors = ["Michael Bryant <mbryant2025@gmail.com>"]
 readme = "README.md"
+repository = "https://github.com/mbryant2025/PyEquations"
+keywords = ["Math"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
