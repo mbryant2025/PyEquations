@@ -1,3 +1,5 @@
+![Tests](https://github.com/mbryant2025/PyEquations/actions/workflows/python-package.yml/badge.svg)
+
 # PyEquations
 
 ## Table of Contents
