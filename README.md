@@ -41,7 +41,7 @@ This is a simple problem if one has studied physics. Everything can be solved fo
 
 $$ v_f = v_0 + at $$
 
-$$ x_f = x_0 + v_0 + \frac{1}{2}at^2 $$
+$$ x_f = x_0 + v_0t + \frac{1}{2}at^2 $$
 
 $$ v_f^2 = v_0^2 + 2a(x_f - x_0) $$
 
@@ -79,7 +79,7 @@ class Kinematic(PyEquations):
 
     @eq
     def calc_x_f(self):
-        # x_f = x_0 + v_0 + 0.5at^2
+        # x_f = x_0 + v_0t + 0.5at^2
         return self.x_f, self.x_0 + self.v_0 * self.t + 0.5 * self.a * self.t ** 2
 
     @eq
@@ -374,6 +374,10 @@ If neither $x = 4$ nor $x = -4$ were valid, PyEquations would raise a `RuntimeEr
   * Used for getting the values of a variable spanning all branches
 * `get_var_vals_decimal(self, name: str) -> list`
   * Used for getting the decimal values of a variable spanning all branches
+* `solved(*variables) -> bool`
+  * Used for checking if all the provided variables has been solved
+  * Example usage: `solved(self.x, self.y, self.z)` would return `True` if all three variables have been solved in the 
+    current branch
 
 
 ## Additional Notes
