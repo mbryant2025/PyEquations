@@ -51,7 +51,7 @@ $$ x_f = x_0 + \frac{1}{2}(v_0 + v_f)t $$
 Let's demonstrate how to solve this problem with PyEquations.
 
 ```python
-# Import PyEquartions dependencies
+# Import PyEquations dependencies
 from pyequations.inheritables import PyEquations
 from pyequations.decorators import eq
 
@@ -315,7 +315,7 @@ As demonstrated above, PyEquations can solve systems of equations and return the
 
 ### No Need for Initial Values
 
-Also as demonstrated in the Recursive Branching section, PyEquations does not require initial values to solve a system.
+Also, as demonstrated in the Recursive Branching section, PyEquations does not require initial values to solve a system.
 
 ### Automatic Branch Deletion for Invalid Values
 
